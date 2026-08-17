@@ -300,6 +300,50 @@ func _run() -> void:
 	var expected_kill_score := 2 + int(small_green.get("worth", 0)) * 4
 	_expect(game.coins.size() == int(small_green.get("worth", 0)) and game.score == expected_kill_score, "Each of the two hits should award +1, and the Small Green death should add worth * 4 and drop worth coins.")
 
+	# Flash bullets ignore ordinary islands, but collide against the full EnemyDock
+	# clip.  A shot near a wide dock's edge used to miss because the recreation
+	# compared it only to a 24px circle at the dock centre.
+	game._start_stage(1)
+	game.enemies.clear()
+	game.docks.clear()
+	game.bullets.clear()
+	var dock_hit_position := Vector2(400.0, 350.0)
+	var dock_health := float(GameData.get_dock("blue").get("health", 90))
+	game.docks.append({"id": "blue", "pos": dock_hit_position, "health": dock_health})
+	var dock_edge_shot_start := Vector2(dock_hit_position.x - game._dock_half_width("blue") - GameData.BULLET_SPEED + 2.0, dock_hit_position.y + 10.0)
+	game._create_bullet(dock_edge_shot_start, Vector2.RIGHT * GameData.BULLET_SPEED, 1, "player")
+	game._update_bullets()
+	_expect(game.bullets.is_empty() and float(game.docks[0].get("health", 0.0)) == dock_health - 1.0, "A player bullet should hit the full left edge of a moving EnemyDock, not only its centre.")
+	# Sweep the bullet's previous-to-current segment as well, so a shot cannot
+	# tunnel through a moving dock if a future weapon/projectile uses a larger
+	# per-tick speed.
+	game.docks[0]["health"] = dock_health
+	game._create_bullet(Vector2(dock_hit_position.x - 130.0, dock_hit_position.y + 10.0), Vector2.RIGHT * 260.0, 1, "player")
+	game._update_bullets()
+	_expect(game.bullets.is_empty() and float(game.docks[0].get("health", 0.0)) == dock_health - 1.0, "A swept bullet should not tunnel through an EnemyDock between ticks.")
+	# Verify the normal 20px/tick diagonal case against a dock during its bobbing
+	# update—the practical case that exposed the narrow centre-circle collision.
+	game.docks.clear()
+	game.bullets.clear()
+	game.docks.append({"id": "blue", "pos": Vector2(320.0, 400.0), "health": dock_health, "counter": 0, "spawn_interval": 999999, "island_index": 0, "dock_side": "left", "is_docked": true, "float_counter": 0})
+	game._update_docks()
+	var moving_dock_position: Vector2 = game.docks[0].get("pos", Vector2.ZERO)
+	var moving_dock_half: float = game._dock_half_width("blue")
+	game._create_bullet(moving_dock_position + Vector2(-moving_dock_half - 6.0, 10.0), Vector2(1.0, -1.0).normalized() * GameData.BULLET_SPEED, 1, "player")
+	game._update_bullets()
+	_expect(game.bullets.is_empty() and float(game.docks[0].get("health", 0.0)) == dock_health - 1.0, "A normal-speed diagonal shot should hit a bobbing EnemyDock corner.")
+	# Target evaluation precedes lifetime expiry in Flash, so frame 26 still has
+	# a chance to strike the dock it reaches on that frame.
+	var lifetime_dock: Dictionary = game.docks[0]
+	lifetime_dock["health"] = dock_health
+	game.docks[0] = lifetime_dock
+	game._create_bullet(moving_dock_position + Vector2(-moving_dock_half - 18.0, 10.0), Vector2.RIGHT * GameData.BULLET_SPEED, 1, "player")
+	var terminal_bullet: Dictionary = game.bullets[0]
+	terminal_bullet["counter"] = GameData.BULLET_LIFETIME_TICKS
+	game.bullets[0] = terminal_bullet
+	game._update_bullets()
+	_expect(game.bullets.is_empty() and float(game.docks[0].get("health", 0.0)) == dock_health - 1.0, "A terminal-lifetime bullet should still damage the EnemyDock it reaches.")
+
 	# Source onCoin awards money/score and creates a rising money-style $1 text.
 	game._start_stage(1)
 	game.coins.clear()

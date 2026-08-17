@@ -99,6 +99,10 @@ const DOCK_RENDER_SIZE := Vector2(228.0, 49.0)
 const DOCK_CANVAS_REGISTRATION := Vector2(114.0, 0.0)
 const DOCK_HALF_WIDTHS := {"blue": 99.0, "purple": 109.0, "red": 111.0, "green": 114.0}
 const DOCK_HEIGHTS := {"blue": 23.0, "purple": 29.0, "red": 42.0, "green": 49.0}
+# EnemyDock.hitTestObject() in Flash includes its GiveHealthBar child, which
+# extends a little below the painted dock body.  Keep this separate from the
+# physical floor height above: a health bar is shootable but not walkable.
+const DOCK_HIT_BOTTOMS := {"blue": 33.85, "purple": 39.55, "red": 51.90, "green": 58.55}
 const MODE_MENU := "menu"
 const MODE_STAGE_SELECT := "stage_select"
 const MODE_PLAY := "play"
@@ -1413,7 +1417,9 @@ func _update_bullets() -> void:
 		var bullet: Dictionary = bullets[index]
 		bullet["counter"] = int(bullet.get("counter", 0)) + 1
 		bullet["pos"] = bullet.get("pos", Vector2.ZERO) + bullet.get("vel", Vector2.ZERO)
-		if int(bullet.get("counter", 0)) > GameData.BULLET_LIFETIME_TICKS or _bullet_hit(bullet):
+		# Original onBullet moves, tests targets (including EnemyDock), then
+		# expires the projectile.  Testing first retains a valid final-frame hit.
+		if _bullet_hit(bullet) or int(bullet.get("counter", 0)) > GameData.BULLET_LIFETIME_TICKS:
 			bullets.remove_at(index)
 		else:
 			bullets[index] = bullet
@@ -1430,7 +1436,7 @@ func _bullet_hit(bullet: Dictionary) -> bool:
 			return true
 	for index in range(docks.size()):
 		var dock: Dictionary = docks[index]
-		if position.distance_to(dock.get("pos", Vector2.ZERO)) < 24.0:
+		if _bullet_hits_dock(bullet, dock):
 			dock["health"] = float(dock.get("health", 0.0)) - int(bullet.get("damage", 1))
 			docks[index] = dock
 			_play_sound("ricochet_1" if random.randf() > 0.5 else "ricochet_2")
@@ -1451,6 +1457,52 @@ func _bullet_hit(bullet: Dictionary) -> bool:
 			score += 1
 			return true
 	return false
+
+func _dock_hit_bounds(dock: Dictionary) -> Rect2:
+	# EnemyDock's registration is its top-centre.  Unlike terrain, the original
+	# bullet loop calls hitTestObject() on the whole dock clip, whose visible
+	# bounds differ per colour (blue 198x23 through green 228x49) and include
+	# the small health-bar child below the body.
+	var dock_id := str(dock.get("id", "blue"))
+	var position: Vector2 = dock.get("pos", Vector2.ZERO)
+	var half_width := _dock_half_width(dock_id)
+	var hit_bottom := float(DOCK_HIT_BOTTOMS.get(dock_id, _dock_height(dock_id)))
+	return Rect2(position.x - half_width, position.y, half_width * 2.0, hit_bottom)
+
+func _bullet_hits_dock(bullet: Dictionary, dock: Dictionary) -> bool:
+	# The exported source bullet is an 8x8 visual.  Check that full body against
+	# the source dock bounds, then sweep from its previous 30 Hz position so a
+	# fast shot cannot tunnel through a floating/moving dock between ticks.
+	var position: Vector2 = bullet.get("pos", Vector2.ZERO)
+	var velocity: Vector2 = bullet.get("vel", Vector2.ZERO)
+	var dock_bounds := _dock_hit_bounds(dock).grow(4.0)
+	return _segment_intersects_rect(position - velocity, position, dock_bounds)
+
+func _segment_intersects_rect(from: Vector2, to: Vector2, bounds: Rect2) -> bool:
+	# Slab intersection in 0..1 segment space.  This avoids relying on a
+	# physics node for the intentionally lightweight, data-driven projectile
+	# list and works for horizontal, vertical, and diagonal shots.
+	if bounds.has_point(from) or bounds.has_point(to):
+		return true
+	var direction := to - from
+	var entry := 0.0
+	var exit := 1.0
+	for axis in range(2):
+		var origin := from.x if axis == 0 else from.y
+		var delta := direction.x if axis == 0 else direction.y
+		var minimum := bounds.position.x if axis == 0 else bounds.position.y
+		var maximum := bounds.end.x if axis == 0 else bounds.end.y
+		if absf(delta) < 0.00001:
+			if origin < minimum or origin > maximum:
+				return false
+			continue
+		var first := (minimum - origin) / delta
+		var second := (maximum - origin) / delta
+		entry = maxf(entry, minf(first, second))
+		exit = minf(exit, maxf(first, second))
+		if entry > exit:
+			return false
+	return true
 
 func _create_laser(position: Vector2, direction: Vector2) -> void:
 	if direction.length_squared() < 0.01:
