@@ -1,0 +1,327 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Bounded, direct-copy original asset subset for the Godot recreation.",
+  "sourceRoot": "../../../original-assets/ffdec",
+  "treeRasterSourceSwf": "../../../content/farm.maxgames.com/Reign of Centipede FIXEDMTYxNw==.swf",
+  "copyPolicy": "Every entry except the five stage/tree_*.png files is an unmodified byte copy of the local FFDec export. Those five PNGs are lossless, direct FFDec shape:png renders from the local original SWF; their source SVGs remain present beside them.",
+  "maps": {
+    "stage_1.png": "sprites/DefineSprite_641_floatingislandgame_fla.container_44/1.png",
+    "stage_2.png": "sprites/DefineSprite_641_floatingislandgame_fla.container_44/2.png",
+    "stage_3.png": "sprites/DefineSprite_641_floatingislandgame_fla.container_44/3.png",
+    "stage_4.png": "sprites/DefineSprite_641_floatingislandgame_fla.container_44/4.png",
+    "stage_5.png": "sprites/DefineSprite_641_floatingislandgame_fla.container_44/5.png"
+  },
+  "stage": {
+    "background.png": {
+      "source": "frames/2.png",
+      "sha256": "36be3820995f1e33ba2aca8e38792e6e904209b0dbafdb6a557c281fa71997f8",
+      "dimensions": "650x450",
+      "use": "Root timeline frame 2: authored gameplay night-sky backdrop behind the live stage container"
+    },
+    "island_452.png": {
+      "source": "sprites/DefineSprite_452/1.png",
+      "sha256": "8e15305a7e726c825cd6968489c088210b62bf00b0300c0c28601daed65099b1",
+      "dimensions": "493x78",
+      "use": "Large island clip used by all stages"
+    },
+    "island_634.png": {
+      "source": "sprites/DefineSprite_634/1.png",
+      "sha256": "f9376b3ceb41ccdac9947384c33b1abd3140377c7f7d369a4620061a10b1aa2e",
+      "dimensions": "233x78",
+      "use": "Short island clip used by stages 3 through 5"
+    },
+    "island_639.png": {
+      "source": "sprites/DefineSprite_639/1.png",
+      "sha256": "10aeba2d69565d510db6624c4d1113bd46a045b3a7e1d84f6da124a27e1fc168",
+      "dimensions": "641x78",
+      "use": "Wide island clip used by stage 5"
+    },
+    "pipe_627.png": {
+      "source": "sprites/DefineSprite_627/1.png",
+      "sha256": "901a6bb42c31a3cabec8d3b948997a41c648b24da470e704acd102212102e7d7",
+      "dimensions": "21x187",
+      "use": "Tall pipe clip"
+    },
+    "pipe_630.png": {
+      "source": "sprites/DefineSprite_630/1.png",
+      "sha256": "b44f21f852d0e87e7cee8bad835b296374763a6ca532af418e1039eec10a95a5",
+      "dimensions": "21x122",
+      "use": "Short pipe clip"
+    },
+    "tree_624.svg": {
+      "source": "shapes/624.svg",
+      "sha256": "2276c23744ee33fb39f9def70f5867cfe9629fa6973eb5f433966e02ee6bda37",
+      "dimensions": "769.95x291.3",
+      "use": "Stage 1 static tree grouping"
+    },
+    "tree_624.png": {
+      "sourceCharacter": "DefineShape2 624 in Reign of Centipede FIXEDMTYxNw==.swf",
+      "preservedVector": "stage/tree_624.svg",
+      "rasterization": "FFDec 26.2.1 CLI: -format shape:png -selectid 624",
+      "sha256": "e556f0e555f91e313946680836f759aae0d17b90f59d4b7707dd87ae8117ac6d",
+      "dimensions": "770x292",
+      "use": "Stage 1 static tree grouping; runtime-safe PNG render"
+    },
+    "tree_631.svg": {
+      "source": "shapes/631.svg",
+      "sha256": "960abf017262ca5b8233c942d8a22e3b8771a10347f3e6c57fde3c1daaa86154",
+      "dimensions": "169.95x392.3",
+      "use": "Stage 2 static tree grouping"
+    },
+    "tree_631.png": {
+      "sourceCharacter": "DefineShape2 631 in Reign of Centipede FIXEDMTYxNw==.swf",
+      "preservedVector": "stage/tree_631.svg",
+      "rasterization": "FFDec 26.2.1 CLI: -format shape:png -selectid 631",
+      "sha256": "cf4a4457dcd3b78854b4cc6cae96ca13c609858845d02d99d99869deba99a7f4",
+      "dimensions": "170x393",
+      "use": "Stage 2 static tree grouping; runtime-safe PNG render"
+    },
+    "tree_635.svg": {
+      "source": "shapes/635.svg",
+      "sha256": "c718528ee268b21935c0bf4c3af0ef634ada61b955b06bb6ac8f50246b191fec",
+      "dimensions": "680x294.2",
+      "use": "Stage 3 static tree grouping"
+    },
+    "tree_635.png": {
+      "sourceCharacter": "DefineShape2 635 in Reign of Centipede FIXEDMTYxNw==.swf",
+      "preservedVector": "stage/tree_635.svg",
+      "rasterization": "FFDec 26.2.1 CLI: -format shape:png -selectid 635",
+      "sha256": "8f18b4ea33c330f22cab83cb5b960b8c9232c7229e0806d80aaead5e1b1c4ce9",
+      "dimensions": "680x295",
+      "use": "Stage 3 static tree grouping; runtime-safe PNG render"
+    },
+    "tree_636.svg": {
+      "source": "shapes/636.svg",
+      "sha256": "da55156d487c02b7a5849fde19a04ee38fda0e0cd9781e39a73833c3363f9130",
+      "dimensions": "998.9x453.65",
+      "use": "Stage 4 static tree grouping"
+    },
+    "tree_636.png": {
+      "sourceCharacter": "DefineShape2 636 in Reign of Centipede FIXEDMTYxNw==.swf",
+      "preservedVector": "stage/tree_636.svg",
+      "rasterization": "FFDec 26.2.1 CLI: -format shape:png -selectid 636",
+      "sha256": "0a796acfd4c33c1261f5b5869aa25735a231a8c2476c3aa2562bcbd31ebb9f11",
+      "dimensions": "999x454",
+      "use": "Stage 4 static tree grouping; runtime-safe PNG render"
+    },
+    "tree_640.svg": {
+      "source": "shapes/640.svg",
+      "sha256": "db023a0ac044115c76b702c7779e877098a1c51d53f692ee79e5e3f1546ab760",
+      "dimensions": "953x451.65",
+      "use": "Stage 5 static tree grouping"
+    },
+    "tree_640.png": {
+      "sourceCharacter": "DefineShape2 640 in Reign of Centipede FIXEDMTYxNw==.swf",
+      "preservedVector": "stage/tree_640.svg",
+      "rasterization": "FFDec 26.2.1 CLI: -format shape:png -selectid 640",
+      "sha256": "ffce09ac071e5293e1bc715b51193b531004f9334816f93bb8615ad2d2f2a7d6",
+      "dimensions": "953x452",
+      "use": "Stage 5 static tree grouping; runtime-safe PNG render"
+    }
+  },
+  "player": {
+    "provenance": "Direct FFDec PNG exports from the supplied original SWF; no trimming, cropping, or re-encoding.",
+    "registration": {
+      "body_source_origin_in_png": "(5.5, 12.5) in the 11x24 body export",
+      "weapon_source_origin_in_png": "(5.95, 6.8) in each 44x15 weapon export; matching FFDec SVG native canvas is 43.45x14.25",
+      "weapon_pivot_relative_to_player": "(0.1, 2.75) source pixels",
+      "muzzle_flash_source_origin_in_png": "(2, 5) in the 14x10 flash export"
+    },
+    "body_standing.png": {
+      "source": "sprites/DefineSprite_566_floatingislandgame_fla.playerbody_53/1.png",
+      "sha256": "3425f167197ca3e441cfeaacbbf802a831acd93ab9cd1fa73b7203d1508307be",
+      "dimensions": "11x24",
+      "frame": "standing"
+    },
+    "body_walk_01.png": {
+      "source": "sprites/DefineSprite_566_floatingislandgame_fla.playerbody_53/2.png",
+      "sha256": "3bba3486b0e3e7ad8edd997e2219f3449aae4584c0f82be4d93c3bbf66dda9ef",
+      "dimensions": "11x24",
+      "frame": "walking 1"
+    },
+    "body_walk_02.png": {
+      "source": "sprites/DefineSprite_566_floatingislandgame_fla.playerbody_53/3.png",
+      "sha256": "3bba3486b0e3e7ad8edd997e2219f3449aae4584c0f82be4d93c3bbf66dda9ef",
+      "dimensions": "11x24",
+      "frame": "walking 2"
+    },
+    "body_walk_03.png": {
+      "source": "sprites/DefineSprite_566_floatingislandgame_fla.playerbody_53/4.png",
+      "sha256": "3bba3486b0e3e7ad8edd997e2219f3449aae4584c0f82be4d93c3bbf66dda9ef",
+      "dimensions": "11x24",
+      "frame": "walking 3"
+    },
+    "weapon_01.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/1.png", "sha256": "571346a60ad5b3a1eff591d4f0b19431363e4a6c8eaa4b3cf0ee3e21e060a050", "dimensions": "44x15", "weapon": "pistol"},
+    "weapon_02.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/2.png", "sha256": "18614978a1f4ecad59569ef57fc8540c37919a90d4c8bfce51753aede64ab9d4", "dimensions": "44x15", "weapon": "desert eagle"},
+    "weapon_03.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/3.png", "sha256": "df969dd56e57ef0fe7b4d9830dcd004c06f8f34761ba7542095eb5fc91440714", "dimensions": "44x15", "weapon": "mac 10"},
+    "weapon_04.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/4.png", "sha256": "4e96c18eae6361d473f970ac6abe20311ce21f916efe915f482055c8c07ac5ae", "dimensions": "44x15", "weapon": "shotgun"},
+    "weapon_05.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/5.png", "sha256": "c9278d00485f023f8c4a99b5d21306c38200d3b65c67e8c4810dffda1c3fb6b7", "dimensions": "44x15", "weapon": "m16"},
+    "weapon_06.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/6.png", "sha256": "460a1382416e15f89e70704923b5d9bb66d1a13cc907125ad88370ab70f9d8ad", "dimensions": "44x15", "weapon": "ump"},
+    "weapon_07.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/7.png", "sha256": "d707f0247e3d49bf64fdbfd66b0685671d83e743e5c9749537f34fd960de9523", "dimensions": "44x15", "weapon": "auto shotgun"},
+    "weapon_08.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/8.png", "sha256": "a7ece3d8cddec73a1f9d2ca668eef84b746674bd88e6ce22c9af02c4186b7eb5", "dimensions": "44x15", "weapon": "p90"},
+    "weapon_09.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/9.png", "sha256": "8fc8bd72862f0077c04f2e07798bfe30a36a0b2bcb9f12acf3e451831ece184", "dimensions": "44x15", "weapon": "aug"},
+    "weapon_10.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/10.png", "sha256": "c8355a0bad37ad9dc5c35a274aa23eccbe6d5d22b98006d14dba2c3b8b271eec", "dimensions": "44x15", "weapon": "flamer"},
+    "weapon_11.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/11.png", "sha256": "ad7022af02e02aa66cfaf19559920ac3c3726c8c991b6a7ead038fcddb49e728", "dimensions": "44x15", "weapon": "chaingun"},
+    "weapon_12.png": {"source": "sprites/DefineSprite_338_floatingislandgame_fla.weapon_54/12.png", "sha256": "85f5f7d7a6a60954e92e5f0b74bb10d3922010543fbac9b182e69e605d4a57c9", "dimensions": "44x15", "weapon": "bazooka"},
+    "muzzle_flash.png": {
+      "source": "sprites/DefineSprite_315/1.png",
+      "sha256": "0eee0b972ca2857fb87a2e2c94aec373fe26fcb6cff73c05c4b7d385a0cd4c10",
+      "dimensions": "14x10",
+      "use": "Weapon flash_mc, shown briefly after a shot"
+    }
+  },
+  "enemy_wrappers": {
+    "provenance": "Direct FFDec PNG exports from the supplied original SWF; no trimming, cropping, or re-encoding.",
+    "source_symbol": "DefineSprite 262 Enemy",
+    "registration": {
+      "source_origin_in_png": "approximately (61.5, 83.05)",
+      "canvas": "124x170",
+      "note": "Each frame preserves the large Enemy wrapper canvas and its original registration, including transparent padding."
+    },
+    "mapping": "enemy_01.png through enemy_13.png correspond directly and in order to DefineSprite 262 Enemy frames 1 through 13.",
+    "frames": {
+      "enemy_01.png": {"source": "sprites/DefineSprite_262_Enemy/1.png", "sha256": "8fead5f586062dcd4cc3a67bfd88858c5c111401f6864dd702bae94ffe76d5fb", "dimensions": "124x170", "frame": 1},
+      "enemy_02.png": {"source": "sprites/DefineSprite_262_Enemy/2.png", "sha256": "330b90c1e330bf712c93ede5fd3c02c371a95ad90b0f3a78951de1c03f52740b", "dimensions": "124x170", "frame": 2},
+      "enemy_03.png": {"source": "sprites/DefineSprite_262_Enemy/3.png", "sha256": "a2f674a69d2e898354c8eb56e00b4fda4eabf9191f1c564d8a9d65a57381f399", "dimensions": "124x170", "frame": 3},
+      "enemy_04.png": {"source": "sprites/DefineSprite_262_Enemy/4.png", "sha256": "6171da4837e547a040a73a1c283d2cc1f17e274b7e44025e90f19e62d84eadac", "dimensions": "124x170", "frame": 4},
+      "enemy_05.png": {"source": "sprites/DefineSprite_262_Enemy/5.png", "sha256": "bed8ba44da228a86de871d986a76b46d45fe594047382da0173f0a24769c4cdd", "dimensions": "124x170", "frame": 5},
+      "enemy_06.png": {"source": "sprites/DefineSprite_262_Enemy/6.png", "sha256": "dd6dfc589a3b4339fa35ddfd110e8d1e44a4840f259e1862f42af8b285d1626b", "dimensions": "124x170", "frame": 6},
+      "enemy_07.png": {"source": "sprites/DefineSprite_262_Enemy/7.png", "sha256": "6efa5043c7d67f8fbe580d2f953e81f8f12095b565723cddcc4c411cb4a78b2b", "dimensions": "124x170", "frame": 7},
+      "enemy_08.png": {"source": "sprites/DefineSprite_262_Enemy/8.png", "sha256": "a6db5eb576c806004131472264846f2bcedd98930c834161b0bc60da3eed6d3c", "dimensions": "124x170", "frame": 8},
+      "enemy_09.png": {"source": "sprites/DefineSprite_262_Enemy/9.png", "sha256": "b01c20fd2880bf8e9fce1c743b1e3a230b1009219d17895a68d556b24518e1a9", "dimensions": "124x170", "frame": 9},
+      "enemy_10.png": {"source": "sprites/DefineSprite_262_Enemy/10.png", "sha256": "3d53036c8c7545811301fae6b8db7321eb3d065227139985b647ca40d67efac7", "dimensions": "124x170", "frame": 10},
+      "enemy_11.png": {"source": "sprites/DefineSprite_262_Enemy/11.png", "sha256": "0e0fc4142a83a12289c068ac8a405c1d9c787ca341edb384ae34189594ef3b10", "dimensions": "124x170", "frame": 11},
+      "enemy_12.png": {"source": "sprites/DefineSprite_262_Enemy/12.png", "sha256": "d78cd458248093662c5fbf92454d774a774f292a3dca1246fe1ae7d65384ca6f", "dimensions": "124x170", "frame": 12},
+      "enemy_13.png": {"source": "sprites/DefineSprite_262_Enemy/13.png", "sha256": "3332ac9f84de8c3bf7dea633cc0b4b42d628a820b5dd210e2c7da71ffee2329f", "dimensions": "124x170", "frame": 13}
+    }
+  },
+  "sprites": {
+    "player.png": "DefineSprite 569 Player, frame 1",
+    "player_body_standing.png": "DefineSprite 566 playerbody, standing frame 1",
+    "player_body_walking_01.png": "DefineSprite 566 playerbody, walking frame 2",
+    "player_body_walking_02.png": "DefineSprite 566 playerbody, walking frame 3",
+    "player_body_walking_03.png": "DefineSprite 566 playerbody, walking frame 4",
+    "player_body_walking_04.png": "DefineSprite 566 playerbody, walking frame 5",
+    "enemy_green.png": "DefineSprite 208 green centipede, frame 1",
+    "enemy_blue.png": "DefineSprite 223 blue centipede, frame 1",
+    "enemy_praying_mantis.png": "DefineSprite 159, direct praying-mantis body, frame 1",
+    "enemy_flying.png": "DefineSprite 164, direct small-flying body, frame 1",
+    "enemy_ladybug.png": "DefineSprite 176, direct ladybug body, frame 1",
+    "enemy_snail.png": "DefineSprite 181, direct snail body, frame 1",
+    "enemy_orange_flying.png": "DefineSprite 186, direct orange-flying body, frame 1",
+    "enemy_purple.png": "DefineSprite 235, direct purple-centipede body, frame 1",
+    "enemy_flying_big.png": "DefineSprite 242, direct flying-big body, frame 1",
+    "enemy_flying_very_big.png": "DefineSprite 249, direct flying-very-big body, frame 1",
+    "enemy_small_green.png": "DefineSprite 254, direct small-green body, frame 1",
+    "enemy_flying_blue.png": "DefineSprite 261, direct flying-blue body, frame 1",
+    "enemy_flying_mech.png": "DefineSprite 171 flying centipede mech, frame 1",
+    "friendly.png": "DefineSprite 376 Friendly, frame 1 old man",
+    "friendly_green.png": "DefineSprite 376 Friendly, frame 2 green man",
+    "friendly_yellow.png": "DefineSprite 376 Friendly, frame 3 yellow man",
+    "friendly_red.png": "DefineSprite 376 Friendly, frame 4 red man",
+    "friendly_nurse.png": "DefineSprite 376 Friendly, frame 5 nurse",
+    "carpenter.png": "DefineSprite 375 carpenter, walk frame 1",
+    "dock_blue.png": "DefineSprite 397 EnemyDock, blue frame 1",
+    "dock_purple.png": "DefineSprite 397 EnemyDock, purple frame 2",
+    "dock_red.png": "DefineSprite 397 EnemyDock, red frame 3",
+    "dock_green.png": "DefineSprite 397 EnemyDock, green frame 4",
+    "teleporter_01.png": "DefineSprite 89 Teleporter, frame 1",
+    "teleporter_02.png": "DefineSprite 89 Teleporter, frame 2",
+    "teleporter_03.png": "DefineSprite 89 Teleporter, frame 3",
+    "teleporter_04.png": "DefineSprite 89 Teleporter, frame 4",
+    "teleporter_05.png": "DefineSprite 89 Teleporter, frame 5"
+  },
+  "buildings": {
+    "rubble.png": "DefineSprite 279 BuildingOnly, frame 1 rubble",
+    "small_shack.png": "DefineSprite 279 BuildingOnly, frame 2 small shack",
+    "carpenter_house.png": "DefineSprite 279 BuildingOnly, frame 3 carpenter house",
+    "hospital.png": "DefineSprite 279 BuildingOnly, frame 4 hospital",
+    "green_building.png": "DefineSprite 279 BuildingOnly, frame 5 green building",
+    "tall_building.png": "DefineSprite 279 BuildingOnly, frame 6 tall building",
+    "medium_shack.png": "DefineSprite 279 BuildingOnly, frame 7 medium shack"
+  },
+  "pickups": {
+    "heart.png": "DefineBitsLossless2 73 HeartData",
+    "coin_2.png": "DefineBitsLossless2 77 Coin2Data",
+    "coin_1.png": "DefineBitsLossless2 78 Coin1Data",
+    "bullet.png": "DefineBitsLossless2 79 BulletData",
+    "box.png": "DefineBitsLossless 80 BoxData",
+    "balloon.png": "DefineBitsLossless2 84 BalloonData",
+    "missile.png": "DefineBitsLossless2 72 MissileData",
+    "fireball.png": "DefineBitsLossless2 74 FireballData",
+    "lazer.png": "DefineBitsLossless2 582 LazerData"
+  },
+  "ui": {
+    "cursor_side.png": "DefineBitsLossless2 75 CursorSideData",
+    "cursor_center.png": "DefineBitsLossless2 76 CursorCenterData",
+    "controls_hud.png": "DefineSprite 661 controls HUD, frame 1",
+    "tutorial/tutorial_01.png": "DefineSprite 561 Tutorial, frame 1",
+    "tutorial/tutorial_02.png": "DefineSprite 561 Tutorial, frame 2",
+    "tutorial/tutorial_03.png": "DefineSprite 561 Tutorial, frame 3",
+    "tutorial/tutorial_04.png": "DefineSprite 561 Tutorial, frame 4",
+    "tutorial/tutorial_05.png": "DefineSprite 561 Tutorial, frame 5",
+    "tutorial/tutorial_06.png": "DefineSprite 561 Tutorial, frame 6",
+    "menu_main.png": "DefineSprite 522 MainMenu, frame 1 main",
+    "menu_credits.png": "DefineSprite 522 MainMenu, frame 2 credits",
+    "menu_lose.png": "DefineSprite 522 MainMenu, frame 3 lose",
+    "menu_win.png": "DefineSprite 522 MainMenu, frame 4 win",
+    "menu_stage_select.png": "DefineSprite 522 MainMenu, frame 5 stage select",
+    "menu_buildings.png": "DefineSprite 302 BuildingMenu, frame 1",
+    "menu_weapons.png": "DefineSprite 443 WeaponMenu, frame 1"
+  },
+  "ui_exports": {
+    "provenance": "Direct FFDec PNG exports from the supplied original SWF; no trimming, cropping, or re-encoding.",
+    "controls_hud.png": {
+      "source": "sprites/DefineSprite_661/1.png",
+      "sha256": "3dadfd14e9b180e6a7f70770323c44285bf3db03df7b5850a8f751263dc102f9",
+      "dimensions": "641x447",
+      "frame": 1,
+      "use": "Original controls HUD presentation reference; the runtime may overlay live values separately."
+    },
+    "tutorial": {
+      "source_symbol": "DefineSprite 561 Tutorial",
+      "mapping": "tutorial_01.png through tutorial_06.png correspond directly and in order to Tutorial frames 1 through 6.",
+      "frames": {
+        "tutorial_01.png": {"source": "sprites/DefineSprite_561_Tutorial/1.png", "sha256": "ee2fe3fe5c8f90a8c964b0ae148165291bb20a63ebc2751f98fe0fd22b020cc1", "dimensions": "660x409", "frame": 1},
+        "tutorial_02.png": {"source": "sprites/DefineSprite_561_Tutorial/2.png", "sha256": "241a69a0c8bda56026a7c40c08265d9fac3a8bd039ba1947e4a2461339814bf2", "dimensions": "660x409", "frame": 2},
+        "tutorial_03.png": {"source": "sprites/DefineSprite_561_Tutorial/3.png", "sha256": "5e9787cea0270739aa080e2bcad3f2aa01bbe7c049485e74644d37f517cc40fd", "dimensions": "660x409", "frame": 3},
+        "tutorial_04.png": {"source": "sprites/DefineSprite_561_Tutorial/4.png", "sha256": "8b49f4d7e029fddb7f26e52124bc4d2c76661c3e0c40b56f10aec9a41ada0f93", "dimensions": "660x409", "frame": 4},
+        "tutorial_05.png": {"source": "sprites/DefineSprite_561_Tutorial/5.png", "sha256": "d1727e36fe568d3a35bcc9ff8587cd50d1d6f7048b719949dd27d6204bbf8437", "dimensions": "660x409", "frame": 5},
+        "tutorial_06.png": {"source": "sprites/DefineSprite_561_Tutorial/6.png", "sha256": "ee4db41bb967d3e7d10f867cf859445ebfa1a8e4787cf98e7d1984afb23312f6", "dimensions": "660x409", "frame": 6}
+      }
+    }
+  },
+  "fonts": {
+    "visitor_tt1_brk.ttf": "DefineFont3 282 Visitor TT1 (BRK)",
+    "bad_robot.ttf": "DefineFont3 280 bad robot",
+    "kongtext.ttf": "DefineFont3 285 Kongtext"
+  },
+  "audio": {
+    "lazer.mp3": "DefineSound 49 LazerSound",
+    "menu.mp3": "DefineSound 50 MenuMusic",
+    "squish.mp3": "DefineSound 51 SquishSound",
+    "shotgun.mp3": "DefineSound 52 ShotgunSound",
+    "rocket.mp3": "DefineSound 53 RocketSound",
+    "ricochet_2.mp3": "DefineSound 54 Ricochet2Sound",
+    "ricochet_1.mp3": "DefineSound 55 Ricochet1Sound",
+    "pistol.mp3": "DefineSound 56 PistolSound",
+    "pipe.mp3": "DefineSound 57 PipeSound",
+    "pickup.mp3": "DefineSound 58 PickupSound",
+    "jump.mp3": "DefineSound 59 JumpSound",
+    "ump.mp3": "DefineSound 60 UMPSound",
+    "mac10.mp3": "DefineSound 61 Mac10Sound",
+    "m16.mp3": "DefineSound 62 M16Sound",
+    "game.mp3": "DefineSound 63 GameMusic",
+    "pop.mp3": "DefineSound 64 PopSound",
+    "fireball.mp3": "DefineSound 65 FireballSound",
+    "explosion.mp3": "DefineSound 66 ExplosionSound",
+    "desert_eagle.mp3": "DefineSound 67 DesertEagleSound",
+    "coin.mp3": "DefineSound 68 CoinSound",
+    "box.mp3": "DefineSound 69 BoxSound"
+  },
+  "caveats": [
+    "The stage images are baked timeline renders, not editable maps or collision data.",
+    "Sprite PNG canvases preserve Flash registration and transparent padding.",
+    "The source has additional animation frames retained in original-assets/ffdec but not copied into this bounded subset."
+  ]
+}

@@ -1,0 +1,15 @@
+# Godot editor/import state
+.godot/
+.import/
+
+# Local build/export output
+build/
+exports/
+tests/artifacts/
+*.tmp
+*.log
+
+# OS/editor state
+.DS_Store
+Thumbs.db
+.vscode/
