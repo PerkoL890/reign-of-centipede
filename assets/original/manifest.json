@@ -16,7 +16,25 @@
       "source": "frames/2.png",
       "sha256": "36be3820995f1e33ba2aca8e38792e6e904209b0dbafdb6a557c281fa71997f8",
       "dimensions": "650x450",
-      "use": "Root timeline frame 2: authored gameplay night-sky backdrop behind the live stage container"
+      "use": "Flattened root-frame fallback only; runtime composes the original gradient and transparent parallax layers below to avoid FFDec crop seams"
+    },
+    "sky_gradient.png": {
+      "source": "images/1.png (DefineBitsLossless 1, used by root DefineShape 2)",
+      "sha256": "fd833e010e696df3aa26f5838dc42c54c11058caa2c1997ee83f0b4e486da73e",
+      "dimensions": "1x409",
+      "use": "Original unbroken vertical sky gradient, stretched across the viewport rather than tiled"
+    },
+    "sky_stars.png": {
+      "source": "sprites/DefineSprite_6/1.png",
+      "sha256": "4e464c37e70bb2feb0203acc3835c39bad247a8efa4cc1f5cf966bb4b52956aa",
+      "dimensions": "863x332",
+      "use": "skyStuff_mc moon and stars layer; source parallax at one twelfth camera speed"
+    },
+    "distant_islands.png": {
+      "source": "sprites/DefineSprite_623/1.png",
+      "sha256": "2dbd03eb26bcbc856bd852edd2613af99f0880f0ff5c9a30383aece6240d41f8",
+      "dimensions": "1255x392",
+      "use": "background_mc distant islands layer; source parallax at one fifth camera speed"
     },
     "island_452.png": {
       "source": "sprites/DefineSprite_452/1.png",

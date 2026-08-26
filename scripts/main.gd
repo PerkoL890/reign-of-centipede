@@ -2,6 +2,12 @@ extends Node2D
 
 const StageLayout = preload("res://scripts/stage_layout_data.gd")
 const VIEW_SIZE := Vector2(650.0, 450.0)
+# The Flash root never tiled a flattened 650x450 screenshot.  It painted an
+# unbroken sky gradient, then two oversized transparent parallax clips.  These
+# rectangles are the recovered source registrations at the opening camera.
+const INITIAL_BACKGROUND_CAMERA := Vector2(290.05, 269.05)
+const SKY_STARS_INITIAL_RECT := Rect2(-52.0, 15.15, 862.95, 331.40)
+const DISTANT_ISLANDS_INITIAL_RECT := Rect2(-83.95, -35.05, 1254.95, 391.95)
 # The recovered c_mc sprite is a 1350x713 export, but live objects may fall
 # below that crop before the original reset condition fires.
 const WORLD_SIZE := Vector2(1350.0, 1280.0)
@@ -1758,12 +1764,42 @@ func _draw() -> void:
 	_draw_aim_cursor()
 
 func _draw_screen_backdrop() -> void:
-	var texture := _load_texture("res://assets/original/stage/background.png")
-	if texture != null:
-		draw_texture_rect(texture, Rect2(Vector2.ZERO, VIEW_SIZE), false)
+	# Shape 2 in the original is a single vertical 1x409 sky gradient stretched
+	# across the full stage.  It remains visible wherever the transparent
+	# parallax art does not cover the viewport, so no repeated background tile
+	# can leave a hard join at the screen border.
+	var gradient_texture := _load_texture("res://assets/original/stage/sky_gradient.png")
+	if gradient_texture != null:
+		draw_texture_rect(gradient_texture, Rect2(Vector2(0.0, -4.0), Vector2(VIEW_SIZE.x, 464.0)), false)
 	else:
-		# Keep a readable fallback while an editor is importing the extracted art.
-		draw_rect(Rect2(Vector2.ZERO, VIEW_SIZE), Color("#0b1a35"))
+		draw_rect(Rect2(Vector2.ZERO, VIEW_SIZE), Color("#1f304e"))
+
+	var sky_texture := _load_texture("res://assets/original/stage/sky_stars.png")
+	var distant_texture := _load_texture("res://assets/original/stage/distant_islands.png")
+	if sky_texture != null and distant_texture != null:
+		# MainTimeline.controlPlayer moves background_mc at 1/5 camera speed and
+		# skyStuff_mc at 1/12.  The oversized source clips cover the viewport
+		# naturally; they are never repeated or stretched.
+		var layer_rects := _background_layer_rects()
+		draw_texture_rect(sky_texture, layer_rects.get("sky", SKY_STARS_INITIAL_RECT), false)
+		draw_texture_rect(distant_texture, layer_rects.get("distant", DISTANT_ISLANDS_INITIAL_RECT), false)
+		return
+
+	# Keep the previously restored root frame as an editor-import fallback, but
+	# omit its one-pixel FFDec crop artifacts at either horizontal edge.  The
+	# source gradient above fills those two columns seamlessly.
+	var fallback_texture := _load_texture("res://assets/original/stage/background.png")
+	if fallback_texture != null:
+		var safe_rect := Rect2(1.0, 0.0, VIEW_SIZE.x - 2.0, VIEW_SIZE.y)
+		draw_texture_rect_region(fallback_texture, safe_rect, safe_rect, Color.WHITE)
+
+func _background_layer_rects() -> Dictionary:
+	var camera_delta := camera_position - INITIAL_BACKGROUND_CAMERA
+	var sky_rect := SKY_STARS_INITIAL_RECT
+	sky_rect.position -= camera_delta / 12.0
+	var distant_rect := DISTANT_ISLANDS_INITIAL_RECT
+	distant_rect.position -= camera_delta / 5.0
+	return {"sky": sky_rect, "distant": distant_rect}
 
 func _draw_stage_backdrop() -> void:
 	var layout := StageLayout.layout_for(stage_id)

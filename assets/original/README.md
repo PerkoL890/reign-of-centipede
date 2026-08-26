@@ -31,8 +31,13 @@ some dynamic presentation such as the initial player marker. Use them as
 faithful visual references or temporary backdrops; rebuild collision,
 interactive buildings, player, and UI as independent Godot nodes.
 
-For clean stage composition, draw stage/background.png in screen space behind
-the world, then use stage/island_452.png, island_634.png,
+For clean stage composition, draw stage/sky_gradient.png across the screen,
+then overlay the oversized transparent stage/sky_stars.png and
+stage/distant_islands.png source layers with their recovered parallax offsets.
+This is the original Flash composition and prevents the bright one-pixel edge
+artifacts in the flattened stage/background.png from looking like a repeated
+sky tile. Keep background.png as an import fallback/reference rather than
+tiling it. Then use stage/island_452.png, island_634.png,
 island_639.png, pipe_627.png, pipe_630.png, and the per-stage tree_*.png
 assets with the exact placement data in scripts/stage_layout_data.gd. The
 matching tree_*.svg files are retained unchanged as the source-faithful

@@ -26,6 +26,17 @@ func _run() -> void:
 	game._close_tutorial()
 	await _settle()
 	await _capture("04-stage-1")
+	# Force a representative camera delta to visually regress the source parallax
+	# layers. The sky stays continuous at the screen borders because the layers
+	# are oversized and sit over a single gradient, rather than repeating the
+	# flattened root-frame PNG.
+	game.paused = true
+	var opening_camera: Vector2 = game.camera_position
+	game.camera_position += Vector2(360.0, 180.0)
+	game.queue_redraw()
+	await _capture("04-stage-1-parallax")
+	game.camera_position = opening_camera
+	game.paused = false
 
 	# Pin the separately rendered Player children for visual regression checks:
 	# body faces the mouse, weapon frame 1 pivots at the recovered hand point,

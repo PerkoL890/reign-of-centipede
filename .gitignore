@@ -1,6 +1,7 @@
 # Godot editor/import state
 .godot/
 .import/
+.godot-profile/
 
 # Local build/export output
 build/

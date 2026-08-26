@@ -40,6 +40,25 @@ func _run() -> void:
 	_expect_vector_close(game.buildings[0].get("pos", Vector2.ZERO), Vector2(436.55, 405.2), "Stage 1's first rubble anchor should use its source matrix position.")
 	_expect_vector_close(game.buildings[11].get("pos", Vector2.ZERO), Vector2(1098.55, 239.1), "Stage 1's final rubble anchor should use its source matrix position.")
 
+	# The root sky uses a source gradient plus two oversized transparent layers,
+	# not a repeated 650px screenshot.  Pin their registrations/parallax rates
+	# so no later backdrop change reintroduces a visible tile seam.
+	_expect(game._load_texture("res://assets/original/stage/sky_gradient.png") != null, "The original one-pixel vertical sky gradient should be available.")
+	_expect(game._load_texture("res://assets/original/stage/sky_stars.png") != null, "The original oversized moon-and-stars parallax layer should be available.")
+	_expect(game._load_texture("res://assets/original/stage/distant_islands.png") != null, "The original oversized distant-islands parallax layer should be available.")
+	var opening_background_layers: Dictionary = game._background_layer_rects()
+	var opening_sky_rect: Rect2 = opening_background_layers.get("sky", Rect2())
+	var opening_distant_rect: Rect2 = opening_background_layers.get("distant", Rect2())
+	_expect_vector_close(opening_sky_rect.position, game.SKY_STARS_INITIAL_RECT.position, "Moon/stars layer should retain its recovered opening registration.")
+	_expect_vector_close(opening_distant_rect.position, game.DISTANT_ISLANDS_INITIAL_RECT.position, "Distant-islands layer should retain its recovered opening registration.")
+	game.camera_position = game.INITIAL_BACKGROUND_CAMERA + Vector2(120.0, 60.0)
+	var scrolled_background_layers: Dictionary = game._background_layer_rects()
+	var scrolled_sky_rect: Rect2 = scrolled_background_layers.get("sky", Rect2())
+	var scrolled_distant_rect: Rect2 = scrolled_background_layers.get("distant", Rect2())
+	_expect_vector_close(scrolled_sky_rect.position, opening_sky_rect.position - Vector2(10.0, 5.0), "Moon/stars layer should scroll at the source one-twelfth camera speed.")
+	_expect_vector_close(scrolled_distant_rect.position, opening_distant_rect.position - Vector2(24.0, 12.0), "Distant-islands layer should scroll at the source one-fifth camera speed.")
+	game.camera_position = game.INITIAL_BACKGROUND_CAMERA
+
 	for stage_number in range(1, 6):
 		if stage_number > 1:
 			game._start_stage(stage_number)

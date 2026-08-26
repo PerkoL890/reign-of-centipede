@@ -20,7 +20,7 @@ second time.
 | Shooting fliers and docks | Implemented | Island target / one laser behaviour; off-screen dock travel, occupancy, side attachment, and delayed portal spawning |
 | Buildings and friendlies | Implemented | Authored-site purchase, construction/repair, destroyed-to-rubble, defender cadence, fighter/carpenter/nurse roles |
 | Pickups and balloons | Implemented | Source launch ranges, gravity/friction, expiry coordinates, linked crate release and landing |
-| Original assets/audio | Implemented | Local fonts, sprites, music/effects, and clean stage composition; SVG tree sources preserved alongside local FFDec PNG renders |
+| Original assets/audio | Implemented | Local fonts, sprites, music/effects, clean stage composition, and source-derived gradient/moon/distant-island parallax; SVG tree sources preserved alongside local FFDec PNG renders |
 | Persistence/unlocks/demolition | Intentionally absent | The recovered original has none; modernization additions remain deferred |
 
 ## Checks performed
@@ -33,6 +33,9 @@ second time.
 - A normal graphical launch and captures of the main menu, stage select,
   tutorial, all five stages, construction/weapon/pause menus, and
   balloon-to-crate release completed without runtime script errors.
+- The background regression capture forces a representative camera delta and
+  verifies that the oversized source parallax layers remain continuous at the
+  viewport borders rather than repeating the flattened root-frame export.
 - The original `content` hashes were rechecked after implementation and match
   the reconnaissance records.
 
@@ -54,8 +57,8 @@ Flash VM implementation. These items remain consciously approximate:
 
 - Island collision uses the recovered display bounds rather than Flash's
   exact per-display-object hit-test implementation.
-- Original timeline animations, particles, parallax cloud motion, screen
-  transitions, cursor expansion, and health-bar artwork are simplified.
+- Original timeline animations, procedural parallax cloud motion, particles,
+  screen transitions, cursor expansion, and health-bar artwork are simplified.
 - Friendly and ordinary-enemy steering mirrors recovered state rules but is
   not frame-captured against a live Flash runtime.
 - Audio uses original files but not Flash positional panning/channel limits;
