@@ -1390,7 +1390,10 @@ func _update_docks() -> void:
 			if absf(position.x - dock_point.x) > 3.0:
 				position += (dock_point - position).normalized() * 2.0
 			else:
-				position.y = StageLayout.island_bounds_in_map(island).position.y
+				# Godot's terrain support test is exact. Leaving the source's visual
+				# approach tolerance here leaves a 1–3px gap, causing dock spawns to
+				# turn around forever instead of stepping onto the island.
+				position = dock_point
 				dock["is_docked"] = true
 				dock["float_counter"] = 0
 		else:
@@ -1519,23 +1522,45 @@ func _create_laser(position: Vector2, direction: Vector2) -> void:
 	lasers.append({"pos": position, "vel": direction.normalized() * GameData.LASER_SPEED, "counter": 0})
 	_play_sound("lazer")
 
+func _laser_hit_bounds(laser: Dictionary) -> Rect2:
+	# Flash anchors LazerData at the firing enemy's x and y - height / 2. Its
+	# scaleX is -1, so the 121px slab extends left from that anchor rather than
+	# behaving like a small projectile centred on it.
+	var position: Vector2 = laser.get("pos", Vector2.ZERO)
+	var velocity: Vector2 = laser.get("vel", Vector2.LEFT)
+	var size := GameData.LASER_SIZE
+	var left := position.x - size.x if velocity.x < 0.0 else position.x
+	return Rect2(Vector2(left, position.y - size.y * 0.5), size)
+
+func _player_hit_bounds() -> Rect2:
+	var position: Vector2 = player.get("pos", Vector2.ZERO)
+	return Rect2(position - Vector2(5.5, PLAYER_COLLISION_HALF_HEIGHT), Vector2(11.0, PLAYER_COLLISION_HALF_HEIGHT * 2.0))
+
+func _friendly_hit_bounds(friendly: Dictionary) -> Rect2:
+	var position: Vector2 = friendly.get("pos", Vector2.ZERO)
+	return Rect2(position - Vector2(13.0, 24.0), Vector2(26.0, 24.0))
+
+func _building_hit_bounds(building: Dictionary) -> Rect2:
+	var position: Vector2 = building.get("pos", Vector2.ZERO)
+	return Rect2(position - Vector2(31.0, 48.0), Vector2(62.0, 48.0))
+
 func _update_lasers() -> void:
 	for index in range(lasers.size() - 1, -1, -1):
 		var laser: Dictionary = lasers[index]
 		laser["counter"] = int(laser.get("counter", 0)) + 1
 		laser["pos"] = laser.get("pos", Vector2.ZERO) + laser.get("vel", Vector2.ZERO)
-		var position: Vector2 = laser.get("pos", Vector2.ZERO)
+		var bounds := _laser_hit_bounds(laser)
 		for building_index in range(buildings.size()):
 			var building: Dictionary = buildings[building_index]
-			if building.get("state", "rubble") == "complete" and position.distance_to(building.get("pos", Vector2.ZERO)) < 25.0:
+			if building.get("state", "rubble") == "complete" and bounds.intersects(_building_hit_bounds(building)):
 				building["health"] = float(building.get("health", 0.0)) - GameData.LASER_BUILDING_DAMAGE_PER_TICK
 				buildings[building_index] = building
 		for friendly_index in range(friendlies.size()):
 			var friendly: Dictionary = friendlies[friendly_index]
-			if position.distance_to(friendly.get("pos", Vector2.ZERO)) < 16.0:
+			if bounds.intersects(_friendly_hit_bounds(friendly)):
 				friendly["health"] = float(friendly.get("health", 0.0)) - GameData.LASER_FRIENDLY_DAMAGE_PER_TICK
 				friendlies[friendly_index] = friendly
-		if int(laser.get("counter", 0)) % GameData.LASER_PLAYER_DAMAGE_INTERVAL_TICKS == 0 and position.distance_to(player.get("pos", Vector2.ZERO)) < 18.0:
+		if int(laser.get("counter", 0)) % GameData.LASER_PLAYER_DAMAGE_INTERVAL_TICKS == 0 and bounds.intersects(_player_hit_bounds()):
 			player["health"] = maxf(0.0, float(player.get("health", 0.0)) - GameData.LASER_PLAYER_DAMAGE)
 		if int(laser.get("counter", 0)) > GameData.LASER_LIFETIME_TICKS:
 			lasers.remove_at(index)
@@ -1981,7 +2006,15 @@ func _draw_bullets() -> void:
 func _draw_lasers() -> void:
 	for laser in lasers:
 		var position: Vector2 = laser.get("pos", Vector2.ZERO)
-		draw_circle(position, 4.0, Color("#7effff"))
+		var velocity: Vector2 = laser.get("vel", Vector2.LEFT)
+		var texture := _load_texture("res://assets/original/pickups/lazer.png")
+		if texture != null:
+			var facing := -1.0 if velocity.x < 0.0 else 1.0
+			draw_set_transform(position - camera_position, 0.0, Vector2(facing, 1.0))
+			draw_texture_rect(texture, Rect2(Vector2(0.0, -GameData.LASER_SIZE.y * 0.5), GameData.LASER_SIZE), false)
+			draw_set_transform(-camera_position)
+		else:
+			draw_rect(_laser_hit_bounds(laser), Color("#7effff"))
 
 func _draw_pickups() -> void:
 	for coin in coins:

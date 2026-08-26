@@ -189,11 +189,14 @@ func _run() -> void:
 		var dock_island: Dictionary = dock_layout.get("islands", [])[0]
 		var dock_target: Vector2 = StageLayout.island_dock_edge_points_in_map(dock_island, game._dock_half_width("blue")).get("left", Vector2.ZERO)
 		pending_dock = game.docks[0]
-		pending_dock["pos"] = dock_target
+		# The source dock may finish within 3px of its approach target. Godot must
+		# snap that tolerance shut so walkers have a continuous dock-to-grass floor.
+		pending_dock["pos"] = dock_target + Vector2(-2.0, 0.0)
 		pending_dock["is_docked"] = false
 		game.docks[0] = pending_dock
 		game._update_docks()
 		_expect(bool(game.docks[0].get("is_docked", false)) and game.enemies.is_empty(), "Docking should complete before any later dock spawn is allowed.")
+		_expect_vector_close(game.docks[0].get("pos", Vector2.ZERO), dock_target, "A dock should snap exactly to the island edge when its approach completes.")
 		game._update_docks()
 		_expect(game.enemies.is_empty(), "A dock should wait for its next cadence after docking.")
 		game._update_docks()
@@ -207,14 +210,35 @@ func _run() -> void:
 			var dock_position: Vector2 = live_dock.get("pos", Vector2.ZERO)
 			var spawned_enemy_position: Vector2 = game.enemies[0].get("pos", Vector2.ZERO)
 			_expect(absf(spawned_enemy_position.y + game._enemy_foot_offset("small_green") - dock_position.y) < 0.01, "A dock-spawned Small Green's native sprite feet should sit on the dock top.")
-			game.player["pos"] = dock_position + Vector2(0.0, -40.0)
+			# A dock spawn must cross the sealed handoff to the grass island, then
+			# remain grounded instead of ping-ponging at the platform edge or falling.
+			var crossing_island_left := StageLayout.island_bounds_in_map(dock_island).position.x
+			for crossing_tick in range(70):
+				if game.enemies.is_empty():
+					break
+				var crossing_enemy: Dictionary = game.enemies[0]
+				crossing_enemy["move_dir"] = 1.0
+				crossing_enemy["default_dir"] = 1.0
+				crossing_enemy["targets_objects"] = false
+				crossing_enemy["move_counter"] = 0
+				game.enemies[0] = crossing_enemy
+				game._update_enemies()
+				game._update_docks()
+				if not game.enemies.is_empty() and game.enemies[0].get("pos", Vector2.ZERO).x > crossing_island_left + 5.0:
+					break
+			_expect(not game.enemies.is_empty() and game.enemies[0].get("pos", Vector2.ZERO).x > crossing_island_left + 5.0, "A dock-spawned walker should cross onto the stationary grass platform instead of bouncing on its dock.")
+			if not game.enemies.is_empty():
+				var crossed_walker_position: Vector2 = game.enemies[0].get("pos", Vector2.ZERO)
+				_expect(absf(crossed_walker_position.y + game._enemy_foot_offset("small_green") - StageLayout.island_bounds_in_map(dock_island).position.y) < 0.01, "A walker that reaches grass should remain grounded on it instead of falling into the void.")
+			var player_landing_dock_position: Vector2 = game.docks[0].get("pos", dock_position)
+			game.player["pos"] = player_landing_dock_position + Vector2(0.0, -40.0)
 			game.player["vel"] = Vector2(0.0, 6.0)
 			game.player["pipe_direction"] = 0
 			for gravity_tick in range(10):
 				game._update_player()
 				if bool(game.player.get("grounded", false)):
 					break
-			_expect(bool(game.player.get("grounded", false)) and absf(float(game.player.get("pos", Vector2.ZERO).y) - (dock_position.y - 11.5)) < 0.01, "The player should land on a dock, matching Flash applyGravity dock collision.")
+			_expect(bool(game.player.get("grounded", false)) and absf(float(game.player.get("pos", Vector2.ZERO).y) - (player_landing_dock_position.y - 11.5)) < 0.01, "The player should land on a dock, matching Flash applyGravity dock collision.")
 
 	# Enemy gravity must resume when its dock is destroyed. Flash removes the
 	# dock after its enemy pass, then applyGravity lets any stranded walker fall
@@ -264,8 +288,21 @@ func _run() -> void:
 	if game.lasers.size() == 1:
 		_expect_vector_close(game.lasers[0].get("pos", Vector2.ZERO), shooter_target, "A shooting flyer's laser should begin at the flyer target position.")
 		_expect_vector_close(game.lasers[0].get("vel", Vector2.ZERO), Vector2.LEFT * GameData.LASER_SPEED, "A shooting flyer's laser should travel left at the recovered speed.")
+		var source_laser_bounds: Rect2 = game._laser_hit_bounds(game.lasers[0])
+		_expect_vector_close(source_laser_bounds.position, shooter_target + Vector2(-GameData.LASER_SIZE.x, -GameData.LASER_SIZE.y * 0.5), "A shooting flyer's slab should extend left from its source anchor.")
+		_expect_vector_close(source_laser_bounds.size, GameData.LASER_SIZE, "A shooting flyer should use the original 121x49 laser slab.")
 	game._update_enemies()
 	_expect(game.lasers.size() == 1, "A shooting flyer should not emit repeated lasers after its single shot at a selected island.")
+	# The player can be inside the long source slab while far from its anchor.
+	# It damages every second overlapping tick, rather than acting as a small ball.
+	game.lasers.clear()
+	game.player["pos"] = Vector2(310.0, 300.0)
+	game.player["health"] = 10.0
+	game._create_laser(Vector2(400.0, 300.0), Vector2.LEFT)
+	game._update_lasers()
+	_expect(float(game.player.get("health", 0.0)) == 10.0, "The source laser should wait for its every-second-tick player damage cadence.")
+	game._update_lasers()
+	_expect(float(game.player.get("health", 0.0)) == 9.0, "A player inside the long laser slab should take its source-compatible sustained damage.")
 
 	# Regular chasing fliers use the slower screen-space rate; this adjustment
 	# must not leak into the separate shooting-flyer movement above.
