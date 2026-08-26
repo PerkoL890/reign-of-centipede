@@ -834,17 +834,20 @@ func _try_fire_player(moving: bool) -> void:
 		aim = Vector2(float(player.get("facing", 1.0)), 0.0)
 	var pose := _player_weapon_pose(aim)
 	var position: Vector2 = pose.get("muzzle_position", player.get("pos", Vector2.ZERO))
-	var spread := 15.0
-	if moving:
-		spread = 22.5
-	if not bool(player.get("grounded", false)):
-		spread = 30.0
+	var spread := _player_bullet_spread_degrees(moving, not bool(player.get("grounded", false)))
 	for pellet in range(int(weapon.get("amount", 1))):
 		var direction := aim.rotated(deg_to_rad(random.randf_range(-spread, spread)))
 		_create_bullet(position, direction * 20.0, int(weapon.get("power", 2)), "player")
 	shoot_counter = 0
 	player["muzzle_flash_ticks"] = 4
 	_play_sound(_weapon_sound(equipped_weapon))
+
+func _player_bullet_spread_degrees(moving: bool, airborne: bool) -> float:
+	if airborne:
+		return GameData.JUMPING_AIM_SPREAD_DEGREES
+	if moving:
+		return GameData.MOVING_AIM_SPREAD_DEGREES
+	return GameData.STANDING_AIM_SPREAD_DEGREES
 
 func _update_player_aim(position: Vector2) -> void:
 	var mouse_world := get_viewport().get_mouse_position() + camera_position
@@ -1250,7 +1253,7 @@ func _move_flying_enemy(enemy: Dictionary) -> void:
 	var target_position: Vector2 = target.get("pos", player.get("pos", Vector2.ZERO))
 	if bool(enemy.get("targets_objects", false)) and target.get("kind", "") != "none":
 		target_position += Vector2(random.randf_range(-60.0, 60.0), random.randf_range(-87.0, 87.0))
-	position += (target_position - position).normalized() * float(enemy.get("speed", 1.0))
+	position += (target_position - position).normalized() * float(enemy.get("speed", 1.0)) * GameData.ORDINARY_FLYING_SPEED_SCALE
 	enemy["move_dir"] = signf(target_position.x - position.x)
 	enemy["pos"] = position
 

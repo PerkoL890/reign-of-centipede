@@ -28,9 +28,17 @@ const CAMERA_DEAD_ZONE: Rect2 = Rect2(200.0, 150.0, 200.0, 150.0)
 const BACKGROUND_PARALLAX_DIVISOR: float = 5.0
 const SKY_PARALLAX_DIVISOR: float = 12.0
 
-const BASE_AIM_SPREAD: float = 15.0
-const MOVING_AIM_SPREAD: float = 22.5
-const JUMPING_AIM_SPREAD: float = 30.0
+# MainTimeline fires at cursor.height / 8, rather than directly at its 15 / 22.5
+# / 30 cursor-expansion values.  These are the source cursor's actual bounds
+# with the recovered 9px center and corner bitmaps.
+const STANDING_AIM_SPREAD_DEGREES: float = 5.727029
+const MOVING_AIM_SPREAD_DEGREES: float = 7.602029
+const JUMPING_AIM_SPREAD_DEGREES: float = 9.477029
+
+# Small/orange chasing fliers need a lower screen-space travel rate than the
+# larger island-targeting shooting fliers.  Keep this isolated to their
+# movement mode so later-wave special enemies retain their own pacing.
+const ORDINARY_FLYING_SPEED_SCALE: float = 0.60
 
 const MAX_FRIENDLIES: int = 40
 const MAX_DOCKS: int = 4

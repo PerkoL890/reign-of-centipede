@@ -85,6 +85,9 @@ func _run() -> void:
 	game.equipped_weapon = "ump"
 	_expect(int(game._player_weapon_pose(Vector2.RIGHT).get("frame", 0)) == 6, "UMP should use original weapon frame 6.")
 	_expect(game._load_texture("res://assets/original/player/weapon_01.png") != null, "The original direct pistol artwork should be available for the rotating player weapon layer.")
+	_expect(absf(game._player_bullet_spread_degrees(false, false) - GameData.STANDING_AIM_SPREAD_DEGREES) < 0.000001, "Standing shots should use the source cursor-height spread, not the raw cursor expansion.")
+	_expect(absf(game._player_bullet_spread_degrees(true, false) - GameData.MOVING_AIM_SPREAD_DEGREES) < 0.000001, "Moving shots should use the source cursor-height spread.")
+	_expect(absf(game._player_bullet_spread_degrees(true, true) - GameData.JUMPING_AIM_SPREAD_DEGREES) < 0.000001, "Airborne shots should use the source cursor-height spread.")
 	var game_music: AudioStream = load("res://assets/original/audio/game.mp3")
 	game._configure_music_stream(game_music)
 	var looping_music := game_music as AudioStreamMP3
@@ -263,6 +266,17 @@ func _run() -> void:
 		_expect_vector_close(game.lasers[0].get("vel", Vector2.ZERO), Vector2.LEFT * GameData.LASER_SPEED, "A shooting flyer's laser should travel left at the recovered speed.")
 	game._update_enemies()
 	_expect(game.lasers.size() == 1, "A shooting flyer should not emit repeated lasers after its single shot at a selected island.")
+
+	# Regular chasing fliers use the slower screen-space rate; this adjustment
+	# must not leak into the separate shooting-flyer movement above.
+	var ordinary_flyer := {
+		"pos": Vector2(300.0, 300.0),
+		"speed": 2.0,
+		"targets_objects": false,
+	}
+	game.player["pos"] = Vector2(500.0, 300.0)
+	game._move_flying_enemy(ordinary_flyer)
+	_expect_vector_close(ordinary_flyer.get("pos", Vector2.ZERO), Vector2(300.0 + 2.0 * GameData.ORDINARY_FLYING_SPEED_SCALE, 300.0), "Ordinary chasing fliers should use the reduced movement rate.")
 
 	# Dock spawns retain their base period and use stage-specific phase offsets.
 	_expect(GameData.dock_creation_interval_for_stage(1, 1) == 1200, "Wave 1 dock cadence should use the 1200-tick base period.")
