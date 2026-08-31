@@ -113,6 +113,27 @@ func _run() -> void:
 	game.player["health"] = 0.0
 	_expect(not game._handle_misc(), "Sandbox should not end when the player health reaches zero.")
 
+	# Enhanced weapon identities: rocket splash, flamer burn, and chaingun recoil.
+	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT)
+	game.enemies.clear()
+	game._create_enemy("small_green", Vector2(500.0, 500.0))
+	var bazooka_health := float(game.enemies[0].get("health", 0.0))
+	game._create_bullet(Vector2(500.0, 500.0), Vector2.RIGHT, 60, "player", "bazooka")
+	_expect(game._bullet_hit(game.bullets.back()), "A bazooka rocket should detonate on an enemy hit.")
+	_expect(not game.explosions.is_empty() and float(game.enemies[0].get("health", 0.0)) < bazooka_health, "Bazooka hits should create splash explosions and damage enemies.")
+	game.enemies.clear()
+	game._create_enemy("small_green", Vector2(500.0, 500.0))
+	game._create_bullet(Vector2(500.0, 500.0), Vector2.RIGHT, 12, "player", "flamer")
+	game._bullet_hit(game.bullets.back())
+	_expect(int(game.enemies[0].get("burn_stacks", 0)) == 1 and int(game.enemies[0].get("burn_ticks", 0)) > 0, "Flamer hits should apply a timed burn stack.")
+	game.player["vel"] = Vector2.ZERO
+	game.player["aim"] = Vector2(0.0, 1.0)
+	game.player["grounded"] = true
+	game.equipped_weapon = "chaingun"
+	game.shoot_counter = 2
+	game._try_fire_player(false)
+	_expect(float(game.player.get("vel", Vector2.ZERO).y) < 0.0, "Chaingun shots aimed downward should propel the player upward.")
+
 	# Player uses separate source child symbols for body, weapon and flash. The
 	# recovered source emits a pistol bullet from weapon.flash.x - 20, which is
 	# around the body centre rather than the old hard-coded point above the head.

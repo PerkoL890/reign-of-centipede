@@ -207,7 +207,7 @@ const WEAPONS: Dictionary = {
 	},
 	"flamer": {
 		"display_name": "Flamer",
-		"power": 35,
+		"power": 12,
 		"s_rate": 6,
 		"cost": 925,
 		"amount": 1,

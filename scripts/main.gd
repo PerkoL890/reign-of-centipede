@@ -20,6 +20,10 @@ const MUZZLE_FLASH_DRAW_SIZE := Vector2(14.0, 10.0)
 const PLAYER_HURT_FLASH_TICKS := 9
 const SMOKE_INITIAL_SCALE := 0.30
 const FRIENDLY_WEAPON_SCALE := 0.65
+const BAZOOKA_EXPLOSION_RADIUS := 72.0
+const BAZOOKA_EXPLOSION_DAMAGE := 72.0
+const FLAMER_BURN_MAX_STACKS := 6
+const FLAMER_BURN_DURATION_TICKS := 90
 const WEAPON_FRAME_BY_ID := {
 	"pistol": 1,
 	"desert_eagle": 2,
@@ -171,6 +175,7 @@ var float_texts: Array = []
 var smokes: Array = []
 var small_clouds: Array = []
 var big_clouds: Array = []
+var explosions: Array = []
 var cheats_available := false
 var infinite_money_cheat := false
 var instant_build_cheat := false
@@ -428,6 +433,7 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	balloons.clear()
 	float_texts.clear()
 	smokes.clear()
+	explosions.clear()
 	small_clouds.clear()
 	big_clouds.clear()
 	_initialize_clouds()
@@ -837,6 +843,7 @@ func _tick() -> void:
 	_update_docks()
 	_update_bullets()
 	_update_lasers()
+	_update_explosions()
 	_update_smoke()
 	_update_clouds()
 	_update_pickups()
@@ -998,6 +1005,11 @@ func _try_fire_player(moving: bool) -> void:
 	for pellet in range(int(weapon.get("amount", 1))):
 		var direction := aim.rotated(deg_to_rad(random.randf_range(-spread, spread)))
 		_create_bullet(position, direction * 20.0, int(weapon.get("power", 2)), "player")
+	if equipped_weapon == "chaingun":
+		var recoil := 1.05 if not bool(player.get("grounded", false)) else 0.55
+		player["vel"] = player.get("vel", Vector2.ZERO) - aim * recoil
+		if aim.y > 0.2:
+			player["grounded"] = false
 	shoot_counter = 0
 	player["muzzle_flash_ticks"] = 4
 	_play_sound(_weapon_sound(equipped_weapon))
@@ -1500,6 +1512,12 @@ func _update_enemies() -> void:
 			_kill_enemy(index)
 			continue
 		enemy["counter"] = int(enemy.get("counter", 0)) + 1
+		if int(enemy.get("burn_ticks", 0)) > 0:
+			enemy["burn_ticks"] = int(enemy.get("burn_ticks", 0)) - 1
+			if int(enemy.get("counter", 0)) % 15 == 0:
+				enemy["health"] = float(enemy.get("health", 0.0)) - float(enemy.get("burn_stacks", 0)) * 2.5
+		elif int(enemy.get("burn_stacks", 0)) > 0:
+			enemy["burn_stacks"] = 0
 		enemy["move_counter"] = int(enemy.get("move_counter", 0)) + 1
 		if int(enemy.get("counter", 0)) > 300 and random.randi_range(1, 7000) == 1:
 			enemy["targets_objects"] = true
@@ -1778,7 +1796,7 @@ func _update_docks() -> void:
 
 func _create_bullet(position: Vector2, velocity: Vector2, damage: int, owner: String, weapon_id: String = "") -> void:
 	var source_weapon := equipped_weapon if weapon_id.is_empty() else weapon_id
-	bullets.append({"pos": position, "vel": velocity, "damage": damage, "owner": owner, "counter": 0, "kind": GameData.get_weapon(source_weapon).get("projectile_kind", "bullet")})
+	bullets.append({"pos": position, "origin": position, "vel": velocity, "damage": damage, "owner": owner, "weapon": source_weapon, "counter": 0, "kind": GameData.get_weapon(source_weapon).get("projectile_kind", "bullet")})
 
 func _update_bullets() -> void:
 	for index in range(bullets.size() - 1, -1, -1):
@@ -1794,10 +1812,27 @@ func _update_bullets() -> void:
 
 func _bullet_hit(bullet: Dictionary) -> bool:
 	var position: Vector2 = bullet.get("pos", Vector2.ZERO)
+	var weapon_id := str(bullet.get("weapon", ""))
+	if weapon_id == "bazooka":
+		for enemy in enemies:
+			if position.distance_to(enemy.get("pos", Vector2.ZERO)) < 19.0:
+				_create_bazooka_explosion(position)
+				return true
+		for dock in docks:
+			if _bullet_hits_dock(bullet, dock):
+				_create_bazooka_explosion(position)
+				return true
 	for index in range(enemies.size()):
 		var enemy: Dictionary = enemies[index]
 		if position.distance_to(enemy.get("pos", Vector2.ZERO)) < 19.0:
-			enemy["health"] = float(enemy.get("health", 0.0)) - int(bullet.get("damage", 1))
+			var damage := float(bullet.get("damage", 1))
+			if weapon_id == "shotgun":
+				var distance := position.distance_to(bullet.get("origin", position))
+				damage *= clampf(1.0 - distance / 260.0, 0.35, 1.0)
+			enemy["health"] = float(enemy.get("health", 0.0)) - damage
+			if weapon_id == "flamer":
+				enemy["burn_stacks"] = mini(FLAMER_BURN_MAX_STACKS, int(enemy.get("burn_stacks", 0)) + 1)
+				enemy["burn_ticks"] = FLAMER_BURN_DURATION_TICKS
 			enemies[index] = enemy
 			score += 1
 			_play_sound("squish")
@@ -1825,6 +1860,38 @@ func _bullet_hit(bullet: Dictionary) -> bool:
 			score += 1
 			return true
 	return false
+
+func _create_bazooka_explosion(position: Vector2) -> void:
+	explosions.append({"pos": position, "ticks": 10, "radius": BAZOOKA_EXPLOSION_RADIUS})
+	for index in range(enemies.size()):
+		var enemy: Dictionary = enemies[index]
+		var offset: Vector2 = enemy.get("pos", Vector2.ZERO) - position
+		var distance := offset.length()
+		if distance > BAZOOKA_EXPLOSION_RADIUS:
+			continue
+		var falloff := 1.0 - distance / BAZOOKA_EXPLOSION_RADIUS
+		enemy["health"] = float(enemy.get("health", 0.0)) - BAZOOKA_EXPLOSION_DAMAGE * (0.35 + falloff * 0.65)
+		if distance > 0.1:
+			enemy["pos"] = enemy.get("pos", Vector2.ZERO) + offset.normalized() * (8.0 + falloff * 22.0)
+		enemies[index] = enemy
+	for index in range(docks.size()):
+		var dock: Dictionary = docks[index]
+		var distance := position.distance_to(dock.get("pos", Vector2.ZERO))
+		if distance <= BAZOOKA_EXPLOSION_RADIUS + _dock_half_width(str(dock.get("id", "blue"))):
+			dock["health"] = float(dock.get("health", 0.0)) - BAZOOKA_EXPLOSION_DAMAGE * 0.6
+			docks[index] = dock
+	for puff in range(5):
+		_create_smoke(position + Vector2(random.randf_range(-18.0, 18.0), random.randf_range(-18.0, 18.0)))
+	_play_sound("explosion")
+
+func _update_explosions() -> void:
+	for index in range(explosions.size() - 1, -1, -1):
+		var explosion: Dictionary = explosions[index]
+		explosion["ticks"] = int(explosion.get("ticks", 0)) - 1
+		if int(explosion.get("ticks", 0)) <= 0:
+			explosions.remove_at(index)
+		else:
+			explosions[index] = explosion
 
 func _dock_hit_bounds(dock: Dictionary) -> Rect2:
 	# EnemyDock's registration is its top-centre.  Unlike terrain, the original
@@ -2149,6 +2216,7 @@ func _draw() -> void:
 	_draw_pickups()
 	_draw_lasers()
 	_draw_bullets()
+	_draw_explosions()
 	_draw_friendlies()
 	_draw_enemies()
 	_draw_player()
@@ -2351,16 +2419,18 @@ func _draw_enemies() -> void:
 		var enemy_id := str(enemy.get("id", "small_flying"))
 		var size := _enemy_render_size(enemy_id)
 		var wrapper_texture := _load_texture(_enemy_wrapper_texture_path(enemy_id))
+		var burn_amount := float(enemy.get("burn_stacks", 0)) / float(FLAMER_BURN_MAX_STACKS)
+		var enemy_tint := Color.WHITE.lerp(Color("#ff9d36"), burn_amount * 0.55)
 		if wrapper_texture != null:
 			# Do not squash the parent frames. DefineSprite 262's shared canvas
 			# preserves per-enemy nested offsets and is drawn at native 1:1 scale.
 			draw_set_transform(position - camera_position, 0.0, Vector2(float(enemy.get("move_dir", 1.0)), 1.0))
-			draw_texture_rect(wrapper_texture, Rect2(-ENEMY_WRAPPER_REGISTRATION, ENEMY_WRAPPER_SIZE), false)
+			draw_texture_rect(wrapper_texture, Rect2(-ENEMY_WRAPPER_REGISTRATION, ENEMY_WRAPPER_SIZE), false, enemy_tint)
 			draw_set_transform(-camera_position)
 		else:
 			var texture := _load_texture(_enemy_texture_path(enemy_id))
 			if texture != null:
-				draw_texture_rect(texture, Rect2(position - size * 0.5, size), false)
+				draw_texture_rect(texture, Rect2(position - size * 0.5, size), false, enemy_tint)
 			else:
 				draw_circle(position, 12.0, Color("#cc6d77"))
 		var data: Dictionary = GameData.get_enemy(enemy_id)
@@ -2444,6 +2514,14 @@ func _draw_bullets() -> void:
 				draw_texture_rect(texture, Rect2(position - Vector2(4, 4), Vector2(8, 8)), false)
 		else:
 			draw_circle(position, 3.0, Color("#fff2a6"))
+
+func _draw_explosions() -> void:
+	for explosion in explosions:
+		var position: Vector2 = explosion.get("pos", Vector2.ZERO)
+		var progress := 1.0 - float(explosion.get("ticks", 0)) / 10.0
+		var radius := float(explosion.get("radius", BAZOOKA_EXPLOSION_RADIUS)) * (0.3 + progress * 0.7)
+		draw_circle(position, radius, Color(1.0, 0.58, 0.15, (1.0 - progress) * 0.38))
+		draw_circle(position, radius * 0.48, Color(1.0, 0.92, 0.46, (1.0 - progress) * 0.75))
 
 func _draw_lasers() -> void:
 	for laser in lasers:
