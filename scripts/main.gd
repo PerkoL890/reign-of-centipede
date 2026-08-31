@@ -2034,13 +2034,13 @@ func _draw_clouds() -> void:
 		var position: Vector2 = cloud.get("pos", Vector2.ZERO)
 		if texture != null:
 			draw_texture_rect(texture, Rect2(position, texture.get_size() * 1.25), false, Color(1.0, 1.0, 1.0, 1.0))
-		_draw_cloud_puff(position, 0.20)
+		_draw_cloud_puff(position, 0.32)
 	for cloud in big_clouds:
 		var texture := _load_texture("res://assets/original/stage/big_cloud_%d.png" % int(cloud.get("frame", 1)))
 		var position: Vector2 = cloud.get("pos", Vector2.ZERO)
 		if texture != null:
 			draw_texture_rect(texture, Rect2(position, texture.get_size() * 1.45), false, Color(1.0, 1.0, 1.0, 1.0))
-		_draw_cloud_puff(position, 0.38)
+		_draw_cloud_puff(position, 0.60)
 
 func _draw_cloud_puff(position: Vector2, scale: float) -> void:
 	var color := Color(0.89, 0.96, 0.92, 0.9)
