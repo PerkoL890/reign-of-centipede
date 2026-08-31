@@ -1157,6 +1157,7 @@ func _create_friendly(position: Vector2, building_data: Dictionary) -> void:
 		position.y = ground_y
 	friendlies.append({
 		"pos": position,
+		"home_pos": position,
 		"health": float(GameData.FRIENDLY_TOTAL_HEALTH),
 		"counter": 0,
 		"role": str(building_data.get("role", "fighter")),
@@ -2220,7 +2221,17 @@ func _draw_bullets() -> void:
 		var texture := _load_texture(path)
 		var position: Vector2 = bullet.get("pos", Vector2.ZERO)
 		if texture != null:
-			draw_texture_rect(texture, Rect2(position - Vector2(4, 4), Vector2(8, 8)), false)
+			if kind == "missile":
+				var velocity: Vector2 = bullet.get("vel", Vector2.RIGHT)
+				var rotation := velocity.angle() if velocity.length_squared() > 0.01 else 0.0
+				# MissileData is a 12x5 horizontal source bitmap. Rotate its native
+				# centre around the live projectile direction instead of forcing it
+				# into the 8x8 bullet rect.
+				draw_set_transform(position - camera_position, rotation)
+				draw_texture_rect(texture, Rect2(-6.0, -2.5, 12.0, 5.0), false)
+				draw_set_transform(-camera_position)
+			else:
+				draw_texture_rect(texture, Rect2(position - Vector2(4, 4), Vector2(8, 8)), false)
 		else:
 			draw_circle(position, 3.0, Color("#fff2a6"))
 
