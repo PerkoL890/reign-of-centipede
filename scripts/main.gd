@@ -17,6 +17,8 @@ const PLAYER_BODY_DRAW_RECT := Rect2(-5.5, -12.5, 11.0, 24.0)
 const PLAYER_WEAPON_PIVOT := Vector2(0.1, 2.75)
 const PLAYER_WEAPON_DRAW_RECT := Rect2(-5.95, -6.8, 43.45, 14.25)
 const MUZZLE_FLASH_DRAW_SIZE := Vector2(14.0, 10.0)
+const PLAYER_HURT_FLASH_TICKS := 9
+const SMOKE_INITIAL_SCALE := 0.15
 const WEAPON_FRAME_BY_ID := {
 	"pistol": 1,
 	"desert_eagle": 2,
@@ -137,6 +139,9 @@ var hearts: Array = []
 var boxes: Array = []
 var balloons: Array = []
 var float_texts: Array = []
+var smokes: Array = []
+var small_clouds: Array = []
+var big_clouds: Array = []
 var purchased_weapons := {"pistol": true}
 var equipped_weapon := "pistol"
 var selected_building := ""
@@ -344,10 +349,12 @@ func _start_stage(number: int) -> void:
 	boxes.clear()
 	balloons.clear()
 	float_texts.clear()
+	smokes.clear()
+	_initialize_clouds()
 	# The supplied map PNGs are convenient reference renders, but they bake in
 	# a Player, pipes, rubble and health labels. Render the recovered individual
 	# timeline instances instead so the simulation owns every dynamic object.
-	player = {"pos": StageLayout.player_start_in_map(stage_id), "vel": Vector2.ZERO, "health": 150.0, "grounded": false, "facing": 1.0, "aim": Vector2.RIGHT, "muzzle_flash_ticks": 0, "pipe_direction": 0, "pipe_index": -1}
+	player = {"pos": StageLayout.player_start_in_map(stage_id), "vel": Vector2.ZERO, "health": 150.0, "grounded": false, "facing": 1.0, "aim": Vector2.RIGHT, "muzzle_flash_ticks": 0, "hurt_flash_ticks": 0, "pipe_direction": 0, "pipe_index": -1}
 	camera_position = StageLayout.MAP_FRAME_ORIGIN - StageLayout.INITIAL_CONTAINER_STAGE_POSITION
 	stage_texture = null
 	_create_build_sites(stage)
@@ -701,6 +708,8 @@ func _tick() -> void:
 	_update_docks()
 	_update_bullets()
 	_update_lasers()
+	_update_smoke()
+	_update_clouds()
 	_update_pickups()
 	_update_float_texts()
 	_update_boxes_and_balloons()
@@ -728,6 +737,7 @@ func _update_player() -> void:
 	if player.is_empty():
 		return
 	player["muzzle_flash_ticks"] = maxi(0, int(player.get("muzzle_flash_ticks", 0)) - 1)
+	player["hurt_flash_ticks"] = maxi(0, int(player.get("hurt_flash_ticks", 0)) - 1)
 	var velocity: Vector2 = player.get("vel", Vector2.ZERO)
 	var moving := false
 	var jump_key_down := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)
@@ -771,7 +781,7 @@ func _update_player() -> void:
 		position = _source_pixels_to_map(Vector2(-66.0, 33.0))
 		velocity = Vector2.ZERO
 		camera_position = StageLayout.MAP_FRAME_ORIGIN - StageLayout.FALL_RESET_CONTAINER_STAGE_POSITION
-		player["health"] = maxf(0.0, float(player.get("health", 0.0)) - 45.0)
+		_damage_player(45.0)
 		_create_balloon(position + Vector2(0, 70), false)
 		_set_status("You fell from the island: -45 health.")
 	player["pos"] = position
@@ -886,6 +896,39 @@ func _player_weapon_pose(aim_override: Vector2 = Vector2.ZERO) -> Dictionary:
 		"muzzle_position": muzzle_world,
 	}
 
+func _friendly_weapon_pose(friendly: Dictionary) -> Dictionary:
+	var position: Vector2 = friendly.get("pos", Vector2.ZERO)
+	var facing := float(friendly.get("facing", 1.0))
+	var aim: Vector2 = friendly.get("aim", Vector2(facing, 0.0))
+	if aim.length_squared() < 0.01:
+		aim = Vector2(facing, 0.0)
+	aim = aim.normalized()
+	var frame := int(WEAPON_FRAME_BY_ID.get(str(friendly.get("weapon", "pistol")), 1))
+	var rotation := aim.angle() if facing > 0.0 else aim.angle() + PI
+	var pivot := position + Vector2(0.0, -11.0)
+	var flash_position: Vector2 = WEAPON_FLASH_POSITIONS.get(frame, WEAPON_FLASH_POSITIONS[1]) * 0.43
+	var muzzle_local := (flash_position - Vector2(8.6, 0.0))
+	var muzzle_world := pivot + Vector2(muzzle_local.x * facing, muzzle_local.y).rotated(rotation)
+	return {"frame": frame, "facing": facing, "rotation": rotation, "pivot": pivot, "flash_position": flash_position, "muzzle_position": muzzle_world}
+
+func _draw_friendly_weapon(friendly: Dictionary, visual_position: Vector2) -> void:
+	var pose := _friendly_weapon_pose(friendly)
+	var texture := _load_texture("res://assets/original/player/weapon_%02d.png" % int(pose.get("frame", 1)))
+	if texture == null:
+		return
+	var pivot: Vector2 = pose.get("pivot", visual_position + Vector2(0.0, -11.0))
+	# Keep the visual bob aligned with the friendly body while bullets retain the
+	# simulation's native hand origin.
+	pivot.y += visual_position.y - friendly.get("pos", visual_position).y
+	draw_set_transform(pivot - camera_position, float(pose.get("rotation", 0.0)), Vector2(float(pose.get("facing", 1.0)) * 0.43, 0.43))
+	draw_texture_rect(texture, PLAYER_WEAPON_DRAW_RECT, false)
+	var flash_ticks := int(friendly.get("muzzle_flash_ticks", 0))
+	var flash_texture := _load_texture("res://assets/original/player/muzzle_flash.png")
+	if flash_texture != null and flash_ticks > 0:
+		var flash_position: Vector2 = pose.get("flash_position", Vector2.ZERO)
+		draw_texture_rect(flash_texture, Rect2(flash_position - Vector2(2.0, 5.0), MUZZLE_FLASH_DRAW_SIZE), false, Color(1.0, 1.0, 1.0, 1.0 if flash_ticks >= 3 else 0.5))
+	draw_set_transform(-camera_position)
+
 func _build_or_repair() -> void:
 	var player_position: Vector2 = player.get("pos", Vector2.ZERO)
 	var site_index := _nearest_build_site(player_position, 35.0)
@@ -968,6 +1011,7 @@ func _create_build_sites(stage: Dictionary) -> void:
 			"build_health": 0.0,
 			"build_total": 0.0,
 			"spawn_counter": 0,
+			"effect_counter": random.randi_range(0, 99),
 		})
 
 func _build_site_positions() -> Array:
@@ -1021,7 +1065,11 @@ func _nearest_build_site(position: Vector2, maximum_distance: float) -> int:
 func _update_buildings() -> void:
 	for index in range(buildings.size()):
 		var site: Dictionary = buildings[index]
+		site["effect_counter"] = int(site.get("effect_counter", 0)) + 1
+		if site.get("state", "rubble") == "rubble" and int(site.get("effect_counter", 0)) % 40 == 0:
+			_create_smoke(site.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-18.0, 18.0), random.randf_range(-35.0, -16.0)))
 		if site.get("state", "rubble") != "complete":
+			buildings[index] = site
 			continue
 		if float(site.get("health", 0.0)) <= 0.0:
 			_destroy_building(site)
@@ -1054,6 +1102,10 @@ func _create_friendly(position: Vector2, building_data: Dictionary) -> void:
 		"weapon": str(building_data.get("defender_weapon_id", "pistol")),
 		"move_dir": -1.0 if random.randf() < 0.5 else 1.0,
 		"move_counter": 0,
+		"facing": 1.0,
+		"aim": Vector2.RIGHT,
+		"has_target": false,
+		"muzzle_flash_ticks": 0,
 	})
 
 func _update_friendlies() -> void:
@@ -1064,6 +1116,8 @@ func _update_friendlies() -> void:
 			continue
 		friendly["counter"] = int(friendly.get("counter", 0)) + 1
 		friendly["move_counter"] = int(friendly.get("move_counter", 0)) + 1
+		friendly["muzzle_flash_ticks"] = maxi(0, int(friendly.get("muzzle_flash_ticks", 0)) - 1)
+		friendly["has_target"] = false
 		var role := str(friendly.get("role", "fighter"))
 		if role == "fighter":
 			_update_fighter(friendly)
@@ -1083,9 +1137,16 @@ func _update_fighter(friendly: Dictionary) -> void:
 	var enemy: Dictionary = enemies[enemy_index]
 	var position: Vector2 = friendly.get("pos", Vector2.ZERO)
 	var target: Vector2 = enemy.get("pos", Vector2.ZERO)
+	var aim := (target - position).normalized()
+	if aim.length_squared() > 0.01:
+		friendly["aim"] = aim
+		friendly["facing"] = 1.0 if aim.x >= 0.0 else -1.0
+		friendly["has_target"] = true
 	var weapon: Dictionary = GameData.get_weapon(str(friendly.get("weapon", "pistol")))
 	if int(friendly.get("counter", 0)) % int(weapon.get("s_rate", 8)) == 0:
-		_create_bullet(position + Vector2(0, -12), (target - position).normalized() * GameData.BULLET_SPEED, int(weapon.get("power", 2)), "friendly", str(friendly.get("weapon", "pistol")))
+		var weapon_pose := _friendly_weapon_pose(friendly)
+		_create_bullet(weapon_pose.get("muzzle_position", position + Vector2(0, -12)), aim * GameData.BULLET_SPEED, int(weapon.get("power", 2)), "friendly", str(friendly.get("weapon", "pistol")))
+		friendly["muzzle_flash_ticks"] = 4
 
 func _update_carpenter(friendly: Dictionary) -> void:
 	var target_index := -1
@@ -1103,7 +1164,11 @@ func _update_carpenter(friendly: Dictionary) -> void:
 		return
 	var target: Dictionary = buildings[target_index]
 	if target_distance > 30.0:
-		position.x += signf(target.get("pos", Vector2.ZERO).x - position.x) * GameData.FRIENDLY_MOVE_SPEED
+		var direction := signf(target.get("pos", Vector2.ZERO).x - position.x)
+		position.x += direction * GameData.FRIENDLY_MOVE_SPEED
+		if direction != 0.0:
+			friendly["facing"] = direction
+			friendly["aim"] = Vector2(direction, 0.0)
 		var ground_y := _ground_y_at(position.x, position.y)
 		if is_finite(ground_y):
 			position.y = ground_y
@@ -1131,6 +1196,9 @@ func _wander_friendly(friendly: Dictionary) -> void:
 		next_ground = position.y
 	friendly["move_dir"] = direction
 	friendly["pos"] = Vector2(next_x, next_ground)
+	if not bool(friendly.get("has_target", false)):
+		friendly["facing"] = direction
+		friendly["aim"] = Vector2(direction, 0.0)
 
 func _handle_spawns() -> void:
 	for event in GameData.scheduled_enemy_events(wave, simulation_tick):
@@ -1201,7 +1269,7 @@ func _update_enemies() -> void:
 		var position: Vector2 = enemy.get("pos", Vector2.ZERO)
 		if position.distance_to(player.get("pos", Vector2.ZERO)) < 20.0 and int(enemy.get("counter", 0)) % GameData.ENEMY_CONTACT_INTERVAL_TICKS == 0:
 			var data: Dictionary = GameData.get_enemy(str(enemy.get("id", "")))
-			player["health"] = maxf(0.0, float(player.get("health", 0.0)) - float(data.get("contact_power", 3)))
+			_damage_player(float(data.get("contact_power", 3)))
 		_enemy_attack_objects(enemy, position)
 		if _map_to_source_pixels(position).y > GameData.ENEMY_FALL_DESPAWN_Y:
 			enemies.remove_at(index)
@@ -1318,7 +1386,46 @@ func _enemy_attack_objects(enemy: Dictionary, position: Vector2) -> void:
 		var building: Dictionary = buildings[target_index]
 		building["health"] = float(building.get("health", 0.0)) - GameData.ENEMY_TARGET_ATTACK_DAMAGE
 		buildings[target_index] = building
+		_create_smoke(building.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-15.0, 15.0), random.randf_range(-35.0, -12.0)))
 	enemy["walk"] = false
+
+func _create_smoke(position: Vector2) -> void:
+	smokes.append({
+		"pos": position,
+		"scale": SMOKE_INITIAL_SCALE,
+		"alpha": 1.0,
+		"speed_x": random.randf_range(-0.5, 0.5),
+		"fade_speed": random.randf_range(2.0, 6.0) / 500.0,
+		"scale_speed": random.randf_range(1.0, 5.0) / 1100.0,
+	})
+
+func _update_smoke() -> void:
+	for index in range(smokes.size() - 1, -1, -1):
+		var smoke: Dictionary = smokes[index]
+		smoke["pos"] = smoke.get("pos", Vector2.ZERO) + Vector2(float(smoke.get("speed_x", 0.0)), -2.0)
+		smoke["scale"] = float(smoke.get("scale", SMOKE_INITIAL_SCALE)) + float(smoke.get("scale_speed", 0.0))
+		smoke["alpha"] = float(smoke.get("alpha", 1.0)) - float(smoke.get("fade_speed", 0.01))
+		if float(smoke.get("alpha", 0.0)) <= 0.0:
+			smokes.remove_at(index)
+		else:
+			smokes[index] = smoke
+
+func _initialize_clouds() -> void:
+	if not small_clouds.is_empty() or not big_clouds.is_empty():
+		return
+	for index in range(9):
+		small_clouds.append({"pos": Vector2(random.randf_range(-300.0, 1000.0), random.randf_range(-20.0, 440.0)), "frame": random.randi_range(1, 3), "speed": 0.1 + float(index) / 27.0})
+	for index in range(8):
+		big_clouds.append({"pos": Vector2(random.randf_range(-300.0, 1000.0), random.randf_range(-20.0, 390.0)), "frame": random.randi_range(1, 3), "speed": 0.13 + float(index) / 8.0})
+
+func _update_clouds() -> void:
+	for clouds in [small_clouds, big_clouds]:
+		for cloud in clouds:
+			var position: Vector2 = cloud.get("pos", Vector2.ZERO)
+			position.x -= float(cloud.get("speed", 0.1))
+			if position.x < -300.0:
+				position.x = 1000.0
+			cloud["pos"] = position
 
 func _kill_enemy(index: int) -> void:
 	var enemy: Dictionary = enemies[index]
@@ -1536,6 +1643,14 @@ func _player_hit_bounds() -> Rect2:
 	var position: Vector2 = player.get("pos", Vector2.ZERO)
 	return Rect2(position - Vector2(5.5, PLAYER_COLLISION_HALF_HEIGHT), Vector2(11.0, PLAYER_COLLISION_HALF_HEIGHT * 2.0))
 
+func _damage_player(amount: float) -> void:
+	if amount <= 0.0 or player.is_empty():
+		return
+	player["health"] = maxf(0.0, float(player.get("health", 0.0)) - amount)
+	# TintObject starts at red and fades back to normal over 0.3 seconds.
+	if int(player.get("hurt_flash_ticks", 0)) <= 0:
+		player["hurt_flash_ticks"] = PLAYER_HURT_FLASH_TICKS
+
 func _friendly_hit_bounds(friendly: Dictionary) -> Rect2:
 	var position: Vector2 = friendly.get("pos", Vector2.ZERO)
 	return Rect2(position - Vector2(13.0, 24.0), Vector2(26.0, 24.0))
@@ -1561,7 +1676,7 @@ func _update_lasers() -> void:
 				friendly["health"] = float(friendly.get("health", 0.0)) - GameData.LASER_FRIENDLY_DAMAGE_PER_TICK
 				friendlies[friendly_index] = friendly
 		if int(laser.get("counter", 0)) % GameData.LASER_PLAYER_DAMAGE_INTERVAL_TICKS == 0 and bounds.intersects(_player_hit_bounds()):
-			player["health"] = maxf(0.0, float(player.get("health", 0.0)) - GameData.LASER_PLAYER_DAMAGE)
+			_damage_player(GameData.LASER_PLAYER_DAMAGE)
 		if int(laser.get("counter", 0)) > GameData.LASER_LIFETIME_TICKS:
 			lasers.remove_at(index)
 		else:
@@ -1781,6 +1896,7 @@ func _draw() -> void:
 	_draw_docks()
 	_draw_balloons()
 	_draw_boxes()
+	_draw_smoke()
 	_draw_pickups()
 	_draw_lasers()
 	_draw_bullets()
@@ -1811,15 +1927,24 @@ func _draw_screen_backdrop() -> void:
 		var layer_rects := _background_layer_rects()
 		draw_texture_rect(sky_texture, layer_rects.get("sky", SKY_STARS_INITIAL_RECT), false)
 		draw_texture_rect(distant_texture, layer_rects.get("distant", DISTANT_ISLANDS_INITIAL_RECT), false)
-		return
+	else:
+		# Keep the previously restored root frame as an editor-import fallback, but
+		# omit its one-pixel FFDec crop artifacts at either horizontal edge.
+		var fallback_texture := _load_texture("res://assets/original/stage/background.png")
+		if fallback_texture != null:
+			var safe_rect := Rect2(1.0, 0.0, VIEW_SIZE.x - 2.0, VIEW_SIZE.y)
+			draw_texture_rect_region(fallback_texture, safe_rect, safe_rect, Color.WHITE)
+	_draw_clouds()
 
-	# Keep the previously restored root frame as an editor-import fallback, but
-	# omit its one-pixel FFDec crop artifacts at either horizontal edge.  The
-	# source gradient above fills those two columns seamlessly.
-	var fallback_texture := _load_texture("res://assets/original/stage/background.png")
-	if fallback_texture != null:
-		var safe_rect := Rect2(1.0, 0.0, VIEW_SIZE.x - 2.0, VIEW_SIZE.y)
-		draw_texture_rect_region(fallback_texture, safe_rect, safe_rect, Color.WHITE)
+func _draw_clouds() -> void:
+	for cloud in small_clouds:
+		var texture := _load_texture("res://assets/original/stage/small_cloud_%d.png" % int(cloud.get("frame", 1)))
+		if texture != null:
+			draw_texture(texture, cloud.get("pos", Vector2.ZERO), Color(1.0, 1.0, 1.0, 0.72))
+	for cloud in big_clouds:
+		var texture := _load_texture("res://assets/original/stage/big_cloud_%d.png" % int(cloud.get("frame", 1)))
+		if texture != null:
+			draw_texture(texture, cloud.get("pos", Vector2.ZERO), Color(1.0, 1.0, 1.0, 0.82))
 
 func _background_layer_rects() -> Dictionary:
 	var camera_delta := camera_position - INITIAL_BACKGROUND_CAMERA
@@ -1913,12 +2038,14 @@ func _dock_height(dock_id: String) -> float:
 func _draw_player() -> void:
 	var position: Vector2 = player.get("pos", Vector2.ZERO)
 	var direction := float(player.get("facing", 1.0))
+	var hurt_amount := float(player.get("hurt_flash_ticks", 0)) / float(PLAYER_HURT_FLASH_TICKS)
+	var player_tint := Color.WHITE.lerp(Color("#ff1d1d"), hurt_amount)
 	var body_texture := _player_body_texture()
 	if body_texture != null:
 		# DefineSprite 566's registration is at the body centre; the transparent
 		# export is 11x24 with its source origin at (5.5, 12.5).
 		draw_set_transform(position - camera_position, 0.0, Vector2(direction, 1.0))
-		draw_texture_rect(body_texture, PLAYER_BODY_DRAW_RECT, false)
+		draw_texture_rect(body_texture, PLAYER_BODY_DRAW_RECT, false, player_tint)
 		draw_set_transform(-camera_position)
 	else:
 		draw_circle(position + Vector2(0, -10), 9.0, Color("#f8e7b0"))
@@ -1934,7 +2061,7 @@ func _draw_player() -> void:
 		draw_set_transform(weapon_pivot - camera_position, weapon_rotation, Vector2(weapon_facing, 1.0))
 		# DefineSprite 338 stays a distinct child of Player and rotates around its
 		# own recovered registration point rather than being a static body overlay.
-		draw_texture_rect(weapon_texture, PLAYER_WEAPON_DRAW_RECT, false)
+		draw_texture_rect(weapon_texture, PLAYER_WEAPON_DRAW_RECT, false, player_tint)
 		var flash_ticks := int(player.get("muzzle_flash_ticks", 0))
 		var flash_texture := _load_texture("res://assets/original/player/muzzle_flash.png")
 		if flash_texture != null and flash_ticks > 0:
@@ -1960,14 +2087,16 @@ func _player_body_texture() -> Texture2D:
 
 func _draw_enemies() -> void:
 	for enemy in enemies:
-		var position: Vector2 = enemy.get("pos", Vector2.ZERO)
+		var position: Vector2 = enemy.get("pos", Vector2.ZERO) + _enemy_animation_offset(enemy)
 		var enemy_id := str(enemy.get("id", "small_flying"))
 		var size := _enemy_render_size(enemy_id)
 		var wrapper_texture := _load_texture(_enemy_wrapper_texture_path(enemy_id))
 		if wrapper_texture != null:
 			# Do not squash the parent frames. DefineSprite 262's shared canvas
 			# preserves per-enemy nested offsets and is drawn at native 1:1 scale.
-			draw_texture_rect(wrapper_texture, Rect2(position - ENEMY_WRAPPER_REGISTRATION, ENEMY_WRAPPER_SIZE), false)
+			draw_set_transform(position - camera_position, 0.0, Vector2(float(enemy.get("move_dir", 1.0)), 1.0))
+			draw_texture_rect(wrapper_texture, Rect2(-ENEMY_WRAPPER_REGISTRATION, ENEMY_WRAPPER_SIZE), false)
+			draw_set_transform(-camera_position)
 		else:
 			var texture := _load_texture(_enemy_texture_path(enemy_id))
 			if texture != null:
@@ -1980,17 +2109,42 @@ func _draw_enemies() -> void:
 		# located just above each native body rather than stretched to its width.
 		_draw_health_bar(position + Vector2(-10.0, body_top - 6.0), 20.0, float(enemy.get("health", 0.0)) / maxf(float(data.get("health", 1.0)), 1.0), Color("#e5a4a4"))
 
+func _enemy_animation_offset(enemy: Dictionary) -> Vector2:
+	var counter := float(enemy.get("counter", 0))
+	if str(enemy.get("movement", "walk")) != "walk":
+		return Vector2(0.0, sin(counter * 0.24) * 1.5)
+	if bool(enemy.get("walk", true)):
+		return Vector2(0.0, absf(sin(counter * 0.78)) * -1.0)
+	return Vector2.ZERO
+
 func _draw_friendlies() -> void:
 	for friendly in friendlies:
 		var kind := str(friendly.get("kind", "old_man"))
 		var path := "res://assets/original/sprites/%s.png" % _friendly_art_name(kind)
 		var texture := _load_texture(path)
-		var position: Vector2 = friendly.get("pos", Vector2.ZERO)
+		var walking := absf(float(friendly.get("move_dir", 0.0))) > 0.0 and int(friendly.get("move_counter", 0)) > 0
+		var bob := -absf(sin(float(friendly.get("counter", 0)) * 0.78)) if walking else 0.0
+		var position: Vector2 = friendly.get("pos", Vector2.ZERO) + Vector2(0.0, bob)
 		if texture != null:
-			draw_texture_rect(texture, Rect2(position - Vector2(13, 24), Vector2(26, 24)), false)
+			draw_set_transform(position - camera_position, 0.0, Vector2(float(friendly.get("facing", 1.0)), 1.0))
+			draw_texture_rect(texture, Rect2(-Vector2(13, 24), Vector2(26, 24)), false)
+			draw_set_transform(-camera_position)
 		else:
 			draw_circle(position, 8.0, Color("#ffe5a2"))
 		_draw_health_bar(position + Vector2(-10, -31), 20.0, float(friendly.get("health", 0.0)) / GameData.FRIENDLY_TOTAL_HEALTH, Color("#8eea8f"))
+		if str(friendly.get("role", "fighter")) == "fighter":
+			_draw_friendly_weapon(friendly, position)
+
+func _draw_smoke() -> void:
+	var texture := _load_texture("res://assets/original/effects/smoke.png")
+	if texture == null:
+		return
+	for smoke in smokes:
+		var position: Vector2 = smoke.get("pos", Vector2.ZERO)
+		var scale := float(smoke.get("scale", SMOKE_INITIAL_SCALE))
+		draw_set_transform(position - camera_position, 0.0, Vector2(scale, scale))
+		draw_texture(texture, Vector2.ZERO, Color(1.0, 1.0, 1.0, float(smoke.get("alpha", 1.0))))
+		draw_set_transform(-camera_position)
 
 func _draw_bullets() -> void:
 	for bullet in bullets:
