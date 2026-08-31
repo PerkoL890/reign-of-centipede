@@ -115,6 +115,7 @@ const DOCK_HIT_BOTTOMS := {"blue": 33.85, "purple": 39.55, "red": 51.90, "green"
 const MODE_MENU := "menu"
 const MODE_STAGE_SELECT := "stage_select"
 const MODE_GAME_MODE_SELECT := "game_mode_select"
+const MODE_DIFFICULTY_SELECT := "difficulty_select"
 const MODE_PLAY := "play"
 const MODE_CREDITS := "credits"
 const MODE_LOST := "lost"
@@ -124,10 +125,18 @@ const GAME_MODE_CLASSIC_SURVIVAL := "classic_survival"
 const GAME_MODE_RAPID_ASSAULT := "rapid_assault"
 const GAME_MODE_SETTLEMENT_DEFENSE := "settlement_defense"
 const GAME_MODE_SANDBOX := "sandbox"
+const DIFFICULTY_EASY := "easy"
+const DIFFICULTY_NORMAL := "normal"
+const DIFFICULTY_HARD := "hard"
+const DIFFICULTY_RULES := {
+	DIFFICULTY_EASY: {"title": "EASY", "description": "More money, slower waves, weaker enemies.", "money_multiplier": 1.5, "wave_interval_multiplier": 1.2, "enemy_health_multiplier": 0.75, "enemy_speed_multiplier": 0.9, "spawn_multiplier": 1},
+	DIFFICULTY_NORMAL: {"title": "NORMAL", "description": "The intended enhanced-mode challenge.", "money_multiplier": 1.0, "wave_interval_multiplier": 1.0, "enemy_health_multiplier": 1.0, "enemy_speed_multiplier": 1.0, "spawn_multiplier": 1},
+	DIFFICULTY_HARD: {"title": "HARD", "description": "Less money, faster tough enemies, extra spawns.", "money_multiplier": 0.7, "wave_interval_multiplier": 0.78, "enemy_health_multiplier": 1.35, "enemy_speed_multiplier": 1.15, "spawn_multiplier": 2},
+}
 const GAME_MODE_RULES := {
 	GAME_MODE_FAITHFUL: {"title": "FAITHFUL CAMPAIGN", "description": "The recovered original: survive all 65 waves.", "target_waves": 65, "wave_interval": 900, "starting_money": -1},
 	GAME_MODE_CLASSIC_SURVIVAL: {"title": "CLASSIC SURVIVAL", "description": "Survive indefinitely. Score and wave are the goal.", "target_waves": 0, "wave_interval": 480, "starting_money": 100},
-	GAME_MODE_RAPID_ASSAULT: {"title": "RAPID ASSAULT", "description": "A compact, high-pressure 15-wave combat run.", "target_waves": 15, "wave_interval": 420, "starting_money": 250},
+	GAME_MODE_RAPID_ASSAULT: {"title": "RAPID ASSAULT", "description": "A compact, high-pressure 15-wave combat run.", "target_waves": 15, "wave_interval": 420, "starting_money": 175},
 	GAME_MODE_SETTLEMENT_DEFENSE: {"title": "SETTLEMENT DEFENSE", "description": "Protect the two starter buildings for 25 waves.", "target_waves": 25, "wave_interval": 600, "starting_money": 300},
 	GAME_MODE_SANDBOX: {"title": "BUILDER'S SANDBOX", "description": "Build and experiment freely; no loss or final wave.", "target_waves": 0, "wave_interval": 900, "starting_money": 999999},
 }
@@ -137,6 +146,8 @@ var paused := false
 var stage_id := 1
 var selected_stage_id := 1
 var game_mode := GAME_MODE_FAITHFUL
+var selected_game_mode := GAME_MODE_FAITHFUL
+var difficulty := DIFFICULTY_NORMAL
 var stage_elapsed_ticks := 0
 var settlement_core_indices: Array[int] = []
 var simulation_tick := 0
@@ -226,8 +237,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.keycode == KEY_F1 and cheats_available:
 			_show_cheat_menu()
 			return
-		if event.keycode == KEY_ESCAPE and (mode == MODE_STAGE_SELECT or mode == MODE_CREDITS):
+		if event.keycode == KEY_ESCAPE and (mode == MODE_STAGE_SELECT or mode == MODE_CREDITS or mode == MODE_GAME_MODE_SELECT):
 			_show_main_menu()
+			return
+		if event.keycode == KEY_ESCAPE and mode == MODE_DIFFICULTY_SELECT:
+			_show_game_mode_select(selected_stage_id)
 			return
 		if mode != MODE_PLAY or paused:
 			return
@@ -292,11 +306,23 @@ func _show_game_mode_select(number: int) -> void:
 	for index in range(modes.size()):
 		var mode_id: String = modes[index]
 		var rules: Dictionary = GAME_MODE_RULES[mode_id]
-		var row := index / 3
-		var column := index % 3
-		var label := "%s\n%s" % [rules.get("title", mode_id), rules.get("description", "")]
-		_add_button(label, Vector2(24 + column * 205, 88 + row * 116), Vector2(192, 100), _start_stage.bind(number, mode_id), 11)
+		_add_button(str(rules.get("title", mode_id)), Vector2(120, 78 + index * 51), Vector2(410, 42), _show_difficulty_select.bind(number, mode_id), 14)
 	_add_button("BACK", Vector2(235, 358), Vector2(180, 34), _show_stage_select, 14)
+	queue_redraw()
+
+func _show_difficulty_select(number: int, mode_id: String) -> void:
+	selected_stage_id = number
+	selected_game_mode = mode_id
+	mode = MODE_DIFFICULTY_SELECT
+	_clear_ui()
+	_add_full_screen_panel(Color("#08162b"))
+	var mode_rules: Dictionary = GAME_MODE_RULES[mode_id]
+	_add_title("%s — DIFFICULTY" % mode_rules.get("title", mode_id), Vector2(65, 48), Vector2(520, 34), 21, Color("#e7f7d2"))
+	for index in range([DIFFICULTY_EASY, DIFFICULTY_NORMAL, DIFFICULTY_HARD].size()):
+		var difficulty_id: String = [DIFFICULTY_EASY, DIFFICULTY_NORMAL, DIFFICULTY_HARD][index]
+		var rules: Dictionary = DIFFICULTY_RULES[difficulty_id]
+		_add_button("%s\n%s" % [rules.get("title", difficulty_id), rules.get("description", "")], Vector2(85, 115 + index * 66), Vector2(480, 56), _start_stage.bind(number, mode_id, difficulty_id), 13)
+	_add_button("BACK", Vector2(235, 340), Vector2(180, 34), _show_game_mode_select.bind(number), 14)
 	queue_redraw()
 
 func _show_credits() -> void:
@@ -367,9 +393,10 @@ func _close_tutorial() -> void:
 	_build_hud()
 	_set_status("Tutorial complete. Stage %d begins." % stage_id)
 
-func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL) -> void:
+func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selected_difficulty: String = DIFFICULTY_NORMAL) -> void:
 	stage_id = number
 	game_mode = selected_mode if GAME_MODE_RULES.has(selected_mode) else GAME_MODE_FAITHFUL
+	difficulty = selected_difficulty if DIFFICULTY_RULES.has(selected_difficulty) else DIFFICULTY_NORMAL
 	stage_elapsed_ticks = 0
 	settlement_core_indices.clear()
 	mode = MODE_PLAY
@@ -382,6 +409,8 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL) -> vo
 	var stage := GameData.get_stage(stage_id)
 	var rules: Dictionary = GAME_MODE_RULES[game_mode]
 	money = int(stage.get("starting_money", 0)) if int(rules.get("starting_money", -1)) < 0 else int(rules.get("starting_money", 0))
+	if game_mode != GAME_MODE_SANDBOX:
+		money = int(round(float(money) * float(DIFFICULTY_RULES[difficulty].get("money_multiplier", 1.0))))
 	score = 0
 	selected_building = ""
 	building_menu_site_index = -1
@@ -414,7 +443,7 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL) -> vo
 	_clear_ui()
 	_build_hud()
 	_play_music("res://assets/original/audio/game.mp3")
-	_set_status("Stage %d — %s" % [stage_id, str(rules.get("description", ""))])
+	_set_status("Stage %d — %s (%s)" % [stage_id, str(rules.get("description", "")), str(DIFFICULTY_RULES[difficulty].get("title", difficulty))])
 	if first_time_playing and stage_id == 1 and game_mode == GAME_MODE_FAITHFUL:
 		_show_tutorial()
 	queue_redraw()
@@ -436,7 +465,7 @@ func _finish_stage(did_win: bool) -> void:
 		var message := "Completed %s on Stage %d." % [rules.get("title", game_mode), stage_id] if did_win else "Your island settlement fell on wave %d." % wave
 		_add_label(message, Vector2(100, 182), Vector2(450, 52), 15, Color("#d6e9d1"), HORIZONTAL_ALIGNMENT_CENTER)
 		_add_label("Final score: %06d     Money: $%04d" % [score, money], Vector2(120, 258), Vector2(410, 25), 14, Color("#a9c8bf"), HORIZONTAL_ALIGNMENT_CENTER)
-		_add_button("TRY AGAIN" if not did_win else "STAGE SELECT", Vector2(225, 325), Vector2(200, 36), _start_stage.bind(stage_id, game_mode) if not did_win else _show_stage_select, 14)
+		_add_button("TRY AGAIN" if not did_win else "STAGE SELECT", Vector2(225, 325), Vector2(200, 36), _start_stage.bind(stage_id, game_mode, difficulty) if not did_win else _show_stage_select, 14)
 	queue_redraw()
 
 func _show_pause_menu() -> void:
@@ -823,7 +852,7 @@ func _handle_misc() -> bool:
 		# map coordinate system used by this recreation.
 		_create_balloon(_source_pixels_to_map(Vector2(random.randf_range(-200.0, 700.0), 300.0)), true)
 	var rules: Dictionary = GAME_MODE_RULES[game_mode]
-	var wave_interval := int(rules.get("wave_interval", GameData.WAVE_INTERVAL_TICKS))
+	var wave_interval := int(round(float(rules.get("wave_interval", GameData.WAVE_INTERVAL_TICKS)) * float(DIFFICULTY_RULES[difficulty].get("wave_interval_multiplier", 1.0))))
 	var wave_clock := simulation_tick if game_mode == GAME_MODE_FAITHFUL else stage_elapsed_ticks
 	if game_mode != GAME_MODE_SANDBOX and wave_clock > 0 and wave_clock % wave_interval == 0:
 		wave += 1
@@ -1360,13 +1389,15 @@ func _handle_spawns() -> void:
 	var spawn_tick := simulation_tick if game_mode == GAME_MODE_FAITHFUL else stage_elapsed_ticks
 	if game_mode == GAME_MODE_RAPID_ASSAULT:
 		spawn_tick *= 2
+	var difficulty_rules: Dictionary = DIFFICULTY_RULES[difficulty]
 	for event in GameData.scheduled_enemy_events(wave, spawn_tick):
-		var spawn_position: Vector2
-		if str(event.get("spawn_kind", "player_relative")) == "fixed":
-			spawn_position = _source_pixels_to_map(Vector2(-540.0, -410.0))
-		else:
-			spawn_position = player.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-500.0, 500.0), random.randf_range(-400.0, 400.0))
-		_create_enemy(str(event.get("enemy_id", "small_flying")), spawn_position)
+		for spawn_index in range(int(difficulty_rules.get("spawn_multiplier", 1))):
+			var spawn_position: Vector2
+			if str(event.get("spawn_kind", "player_relative")) == "fixed":
+				spawn_position = _source_pixels_to_map(Vector2(-540.0, -410.0)) + Vector2(spawn_index * 28.0, 0.0)
+			else:
+				spawn_position = player.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-500.0, 500.0), random.randf_range(-400.0, -100.0))
+			_create_enemy(str(event.get("enemy_id", "small_flying")), spawn_position)
 	if game_mode == GAME_MODE_CLASSIC_SURVIVAL:
 		_spawn_survival_pressure(spawn_tick)
 	var dock_event: Dictionary = GameData.scheduled_dock_event(wave, spawn_tick, stage_id)
@@ -1411,11 +1442,12 @@ func _create_enemy(enemy_id: String, position: Vector2) -> void:
 	var data: Dictionary = GameData.get_enemy(enemy_id)
 	if data.is_empty():
 		return
-	var speed := float(data.get("base_speed", 1.8)) + random.randf() * GameData.ENEMY_SPEED_VARIANCE
+	var difficulty_rules: Dictionary = DIFFICULTY_RULES[difficulty]
+	var speed := (float(data.get("base_speed", 1.8)) + random.randf() * GameData.ENEMY_SPEED_VARIANCE) * float(difficulty_rules.get("enemy_speed_multiplier", 1.0))
 	enemies.append({
 		"id": enemy_id,
 		"pos": position,
-		"health": float(data.get("health", 9)),
+		"health": float(data.get("health", 9)) * float(difficulty_rules.get("enemy_health_multiplier", 1.0)),
 		"counter": 0,
 		"speed": speed,
 		"movement": str(data.get("movement", "walk")),

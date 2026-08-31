@@ -81,7 +81,10 @@ func _run() -> void:
 
 	# Upgrade modes share the recovered maps but have distinct objectives/rules.
 	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT)
-	_expect(game.game_mode == game.GAME_MODE_RAPID_ASSAULT and game.money == 250, "Rapid Assault should use its own starting resources.")
+	_expect(game.game_mode == game.GAME_MODE_RAPID_ASSAULT and game.money == 175, "Normal Rapid Assault should use its own starting resources.")
+	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT, game.DIFFICULTY_EASY)
+	_expect(game.money == 263, "Easy Rapid Assault should grant more starting money.")
+	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT)
 	game.stage_elapsed_ticks = 419
 	game._handle_misc()
 	_expect(game.wave == 1, "Rapid Assault should not advance before its compact wave interval.")
@@ -144,7 +147,15 @@ func _run() -> void:
 		_expect(faithful_mode_button != null, "Mode Select should expose Faithful Campaign.")
 		if faithful_mode_button != null:
 			faithful_mode_button.pressed.emit()
-		_expect(game.stage_id == 2 and game.mode == game.MODE_PLAY and game.game_mode == game.GAME_MODE_FAITHFUL, "Faithful Campaign should start the selected stage.")
+		_expect(game.mode == game.MODE_DIFFICULTY_SELECT, "Selecting a mode should open difficulty selection.")
+		var normal_difficulty_button: Button
+		for child in game.ui_layer.get_children():
+			if child is Button and child.text.begins_with("NORMAL"):
+				normal_difficulty_button = child
+		_expect(normal_difficulty_button != null, "Difficulty Select should expose Normal.")
+		if normal_difficulty_button != null:
+			normal_difficulty_button.pressed.emit()
+		_expect(game.stage_id == 2 and game.mode == game.MODE_PLAY and game.game_mode == game.GAME_MODE_FAITHFUL and game.difficulty == game.DIFFICULTY_NORMAL, "Normal Faithful Campaign should start the selected stage.")
 		_expect(game.money == 0, "Selecting Stage 2 should not carry Stage 1's starting money.")
 
 	# The original's menu reset did not reset the global simulation/shoot counters.
