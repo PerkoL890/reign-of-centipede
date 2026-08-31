@@ -114,14 +114,29 @@ const DOCK_HEIGHTS := {"blue": 23.0, "purple": 29.0, "red": 42.0, "green": 49.0}
 const DOCK_HIT_BOTTOMS := {"blue": 33.85, "purple": 39.55, "red": 51.90, "green": 58.55}
 const MODE_MENU := "menu"
 const MODE_STAGE_SELECT := "stage_select"
+const MODE_GAME_MODE_SELECT := "game_mode_select"
 const MODE_PLAY := "play"
 const MODE_CREDITS := "credits"
 const MODE_LOST := "lost"
 const MODE_WON := "won"
+const GAME_MODE_FAITHFUL := "faithful"
+const GAME_MODE_RAPID_ASSAULT := "rapid_assault"
+const GAME_MODE_SETTLEMENT_DEFENSE := "settlement_defense"
+const GAME_MODE_SANDBOX := "sandbox"
+const GAME_MODE_RULES := {
+	GAME_MODE_FAITHFUL: {"title": "FAITHFUL CAMPAIGN", "description": "The recovered original: survive all 65 waves.", "target_waves": 65, "wave_interval": 900, "starting_money": -1},
+	GAME_MODE_RAPID_ASSAULT: {"title": "RAPID ASSAULT", "description": "A compact, high-pressure 15-wave combat run.", "target_waves": 15, "wave_interval": 420, "starting_money": 250},
+	GAME_MODE_SETTLEMENT_DEFENSE: {"title": "SETTLEMENT DEFENSE", "description": "Protect the two starter buildings for 25 waves.", "target_waves": 25, "wave_interval": 600, "starting_money": 300},
+	GAME_MODE_SANDBOX: {"title": "BUILDER'S SANDBOX", "description": "Build and experiment freely; no loss or final wave.", "target_waves": 0, "wave_interval": 900, "starting_money": 999999},
+}
 
 var mode := MODE_MENU
 var paused := false
 var stage_id := 1
+var selected_stage_id := 1
+var game_mode := GAME_MODE_FAITHFUL
+var stage_elapsed_ticks := 0
+var settlement_core_indices: Array[int] = []
 var simulation_tick := 0
 var shoot_counter := 0
 var wave := 1
@@ -251,7 +266,7 @@ func _show_stage_select() -> void:
 			5: Rect2(316, 278, 165, 115),
 		}
 		for number in range(1, 6):
-			var button := _add_source_menu_hotspot("STAGE %d" % number, card_bounds[number], _start_stage.bind(number), "Stage %d" % number)
+			var button := _add_source_menu_hotspot("STAGE %d" % number, card_bounds[number], _show_game_mode_select.bind(number), "Stage %d" % number)
 			button.tooltip_text = "Stage %d — %d fixed construction sites" % [number, int(GameData.get_stage(number).get("slot_count", 0))]
 	else:
 		_add_full_screen_panel(Color("#0b1c35"))
@@ -260,9 +275,26 @@ func _show_stage_select() -> void:
 		for number in range(1, 6):
 			var row := (number - 1) / 3
 			var column := (number - 1) % 3
-			var button := _add_button("STAGE %d" % number, Vector2(115 + column * 145, 145 + row * 68), Vector2(130, 48), _start_stage.bind(number), 15)
+			var button := _add_button("STAGE %d" % number, Vector2(115 + column * 145, 145 + row * 68), Vector2(130, 48), _show_game_mode_select.bind(number), 15)
 			button.tooltip_text = "%d fixed construction sites" % int(GameData.get_stage(number).get("slot_count", 0))
 		_add_button("BACK", Vector2(235, 350), Vector2(180, 34), _show_main_menu, 14)
+	queue_redraw()
+
+func _show_game_mode_select(number: int) -> void:
+	selected_stage_id = number
+	mode = MODE_GAME_MODE_SELECT
+	_clear_ui()
+	_add_full_screen_panel(Color("#08162b"))
+	_add_title("STAGE %d — SELECT MODE" % number, Vector2(80, 24), Vector2(490, 36), 23, Color("#e7f7d2"))
+	var modes := [GAME_MODE_FAITHFUL, GAME_MODE_RAPID_ASSAULT, GAME_MODE_SETTLEMENT_DEFENSE, GAME_MODE_SANDBOX]
+	for index in range(modes.size()):
+		var mode_id: String = modes[index]
+		var rules: Dictionary = GAME_MODE_RULES[mode_id]
+		var row := index / 2
+		var column := index % 2
+		var label := "%s\n%s" % [rules.get("title", mode_id), rules.get("description", "")]
+		_add_button(label, Vector2(45 + column * 283, 95 + row * 115), Vector2(270, 98), _start_stage.bind(number, mode_id), 13)
+	_add_button("BACK", Vector2(235, 358), Vector2(180, 34), _show_stage_select, 14)
 	queue_redraw()
 
 func _show_credits() -> void:
@@ -333,8 +365,11 @@ func _close_tutorial() -> void:
 	_build_hud()
 	_set_status("Tutorial complete. Stage %d begins." % stage_id)
 
-func _start_stage(number: int) -> void:
+func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL) -> void:
 	stage_id = number
+	game_mode = selected_mode if GAME_MODE_RULES.has(selected_mode) else GAME_MODE_FAITHFUL
+	stage_elapsed_ticks = 0
+	settlement_core_indices.clear()
 	mode = MODE_PLAY
 	paused = false
 	if not has_started_a_stage:
@@ -343,7 +378,8 @@ func _start_stage(number: int) -> void:
 		has_started_a_stage = true
 	wave = 1
 	var stage := GameData.get_stage(stage_id)
-	money = int(stage.get("starting_money", 0))
+	var rules: Dictionary = GAME_MODE_RULES[game_mode]
+	money = int(stage.get("starting_money", 0)) if int(rules.get("starting_money", -1)) < 0 else int(rules.get("starting_money", 0))
 	score = 0
 	selected_building = ""
 	building_menu_site_index = -1
@@ -371,11 +407,13 @@ func _start_stage(number: int) -> void:
 	camera_position = StageLayout.MAP_FRAME_ORIGIN - StageLayout.INITIAL_CONTAINER_STAGE_POSITION
 	stage_texture = null
 	_create_build_sites(stage)
+	if game_mode == GAME_MODE_SETTLEMENT_DEFENSE:
+		_create_settlement_starters()
 	_clear_ui()
 	_build_hud()
 	_play_music("res://assets/original/audio/game.mp3")
-	_set_status("Stage %d — survive 65 waves." % stage_id)
-	if first_time_playing and stage_id == 1:
+	_set_status("Stage %d — %s" % [stage_id, str(rules.get("description", ""))])
+	if first_time_playing and stage_id == 1 and game_mode == GAME_MODE_FAITHFUL:
 		_show_tutorial()
 	queue_redraw()
 
@@ -384,7 +422,7 @@ func _finish_stage(did_win: bool) -> void:
 	_stop_music()
 	_clear_ui()
 	var source_frame := "menu_win.png" if did_win else "menu_lose.png"
-	if _add_original_main_menu_frame(source_frame):
+	if game_mode == GAME_MODE_FAITHFUL and _add_original_main_menu_frame(source_frame):
 		if did_win:
 			_add_source_menu_hotspot("STAGE SELECT", Rect2(75, 245, 400, 64), _show_stage_select, "Stage select")
 		else:
@@ -392,10 +430,11 @@ func _finish_stage(did_win: bool) -> void:
 	else:
 		_add_full_screen_panel(Color(0.02, 0.06, 0.12, 0.88))
 		_add_title("STAGE COMPLETE" if did_win else "YOU WERE OVERWHELMED", Vector2(62, 105), Vector2(526, 52), 26, Color("#e7f7d2") if did_win else Color("#ffb0a0"))
-		var message := "You've completed all 65 waves.\nSee if you can complete another stage." if did_win else "Your island settlement fell on wave %d." % wave
+		var rules: Dictionary = GAME_MODE_RULES[game_mode]
+		var message := "Completed %s on Stage %d." % [rules.get("title", game_mode), stage_id] if did_win else "Your island settlement fell on wave %d." % wave
 		_add_label(message, Vector2(100, 182), Vector2(450, 52), 15, Color("#d6e9d1"), HORIZONTAL_ALIGNMENT_CENTER)
 		_add_label("Final score: %06d     Money: $%04d" % [score, money], Vector2(120, 258), Vector2(410, 25), 14, Color("#a9c8bf"), HORIZONTAL_ALIGNMENT_CENTER)
-		_add_button("STAGE SELECT", Vector2(225, 325), Vector2(200, 36), _show_stage_select, 14)
+		_add_button("TRY AGAIN" if not did_win else "STAGE SELECT", Vector2(225, 325), Vector2(200, 36), _start_stage.bind(stage_id, game_mode) if not did_win else _show_stage_select, 14)
 	queue_redraw()
 
 func _show_pause_menu() -> void:
@@ -751,8 +790,9 @@ func _panel_style(background: Color, border: Color, border_width: int) -> StyleB
 
 func _tick() -> void:
 	simulation_tick += 1
+	stage_elapsed_ticks += 1
 	shoot_counter += 1
-	if infinite_money_cheat:
+	if infinite_money_cheat or game_mode == GAME_MODE_SANDBOX:
 		money = 999999
 	_update_player()
 	# Flash handles its timer, balloons and the loss/win checks before it makes
@@ -780,13 +820,21 @@ func _handle_misc() -> bool:
 		# Source c_mc coordinates: x=-200..700, y=300. Convert once to the
 		# map coordinate system used by this recreation.
 		_create_balloon(_source_pixels_to_map(Vector2(random.randf_range(-200.0, 700.0), 300.0)), true)
-	if simulation_tick % GameData.WAVE_INTERVAL_TICKS == 0:
+	var rules: Dictionary = GAME_MODE_RULES[game_mode]
+	var wave_interval := int(rules.get("wave_interval", GameData.WAVE_INTERVAL_TICKS))
+	var wave_clock := simulation_tick if game_mode == GAME_MODE_FAITHFUL else stage_elapsed_ticks
+	if game_mode != GAME_MODE_SANDBOX and wave_clock > 0 and wave_clock % wave_interval == 0:
 		wave += 1
 	# Loss deliberately wins this tie, as in MainTimeline.handleMisc().
-	if float(player.get("health", 0.0)) <= 0.0:
+	if game_mode != GAME_MODE_SANDBOX and float(player.get("health", 0.0)) <= 0.0:
 		_finish_stage(false)
 		return true
-	if GameData.is_victory_wave(wave):
+	if game_mode == GAME_MODE_SETTLEMENT_DEFENSE and _settlement_is_destroyed():
+		_set_status("The settlement has fallen.")
+		_finish_stage(false)
+		return true
+	var target_waves := int(rules.get("target_waves", GameData.LAST_COMPLETED_WAVE))
+	if target_waves > 0 and wave > target_waves:
 		_finish_stage(true)
 		return true
 	return false
@@ -1073,6 +1121,23 @@ func _create_build_sites(stage: Dictionary) -> void:
 		})
 		_create_smoke(position + Vector2(random.randf_range(-12.0, 12.0), random.randf_range(-32.0, -16.0)))
 
+func _create_settlement_starters() -> void:
+	var starter_ids := ["small_shack", "carpenter_house"]
+	for index in range(mini(starter_ids.size(), buildings.size())):
+		var site: Dictionary = buildings[index]
+		site["id"] = starter_ids[index]
+		_complete_building(site)
+		buildings[index] = site
+		settlement_core_indices.append(index)
+
+func _settlement_is_destroyed() -> bool:
+	if settlement_core_indices.is_empty():
+		return false
+	for index in settlement_core_indices:
+		if index >= 0 and index < buildings.size() and buildings[index].get("state", "rubble") == "complete":
+			return false
+	return true
+
 func _build_site_positions() -> Array:
 	var positions: Array = []
 	for site in StageLayout.building_sites_for(stage_id):
@@ -1288,14 +1353,17 @@ func _friendly_home_surface(position: Vector2) -> Rect2:
 	return best_surface
 
 func _handle_spawns() -> void:
-	for event in GameData.scheduled_enemy_events(wave, simulation_tick):
+	var spawn_tick := simulation_tick if game_mode == GAME_MODE_FAITHFUL else stage_elapsed_ticks
+	if game_mode == GAME_MODE_RAPID_ASSAULT:
+		spawn_tick *= 2
+	for event in GameData.scheduled_enemy_events(wave, spawn_tick):
 		var spawn_position: Vector2
 		if str(event.get("spawn_kind", "player_relative")) == "fixed":
 			spawn_position = _source_pixels_to_map(Vector2(-540.0, -410.0))
 		else:
 			spawn_position = player.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-500.0, 500.0), random.randf_range(-400.0, 400.0))
 		_create_enemy(str(event.get("enemy_id", "small_flying")), spawn_position)
-	var dock_event: Dictionary = GameData.scheduled_dock_event(wave, simulation_tick, stage_id)
+	var dock_event: Dictionary = GameData.scheduled_dock_event(wave, spawn_tick, stage_id)
 	if not dock_event.is_empty() and docks.size() < GameData.MAX_DOCKS:
 		_create_dock(str(dock_event.get("dock_id", "blue")), _choose_dock_enemy(dock_event))
 

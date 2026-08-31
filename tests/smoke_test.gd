@@ -79,6 +79,22 @@ func _run() -> void:
 		_expect(game.money == expected_money, "Stage %d should start with $%d." % [stage_number, expected_money])
 		_expect(not game.paused, "Only the initial Stage 1 launch should show the tutorial.")
 
+	# Upgrade modes share the recovered maps but have distinct objectives/rules.
+	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT)
+	_expect(game.game_mode == game.GAME_MODE_RAPID_ASSAULT and game.money == 250, "Rapid Assault should use its own starting resources.")
+	game.stage_elapsed_ticks = 419
+	game._handle_misc()
+	_expect(game.wave == 1, "Rapid Assault should not advance before its compact wave interval.")
+	game.stage_elapsed_ticks = 420
+	game._handle_misc()
+	_expect(game.wave == 2, "Rapid Assault should advance at its compact wave interval.")
+	game._start_stage(1, game.GAME_MODE_SETTLEMENT_DEFENSE)
+	_expect(game.settlement_core_indices.size() == 2, "Settlement Defense should create two protected starter buildings.")
+	_expect(not game._settlement_is_destroyed(), "An intact settlement should not be considered defeated.")
+	game._start_stage(1, game.GAME_MODE_SANDBOX)
+	game.player["health"] = 0.0
+	_expect(not game._handle_misc(), "Sandbox should not end when the player health reaches zero.")
+
 	# Player uses separate source child symbols for body, weapon and flash. The
 	# recovered source emits a pistol bullet from weapon.flash.x - 20, which is
 	# around the body centre rather than the old hard-coded point above the head.
@@ -112,7 +128,15 @@ func _run() -> void:
 	_expect(stage_two_button != null, "Stage Select should expose a Stage 2 button.")
 	if stage_two_button != null:
 		stage_two_button.pressed.emit()
-		_expect(game.stage_id == 2 and game.mode == game.MODE_PLAY, "Stage Select button should start its matching stage.")
+		_expect(game.selected_stage_id == 2 and game.mode == game.MODE_GAME_MODE_SELECT, "Stage Select should open mode selection for its matching stage.")
+		var faithful_mode_button: Button
+		for child in game.ui_layer.get_children():
+			if child is Button and child.text.begins_with("FAITHFUL CAMPAIGN"):
+				faithful_mode_button = child
+		_expect(faithful_mode_button != null, "Mode Select should expose Faithful Campaign.")
+		if faithful_mode_button != null:
+			faithful_mode_button.pressed.emit()
+		_expect(game.stage_id == 2 and game.mode == game.MODE_PLAY and game.game_mode == game.GAME_MODE_FAITHFUL, "Faithful Campaign should start the selected stage.")
 		_expect(game.money == 0, "Selecting Stage 2 should not carry Stage 1's starting money.")
 
 	# The original's menu reset did not reset the global simulation/shoot counters.
