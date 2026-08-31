@@ -2239,6 +2239,14 @@ func _draw_friendlies() -> void:
 			_draw_friendly_weapon(friendly, position)
 
 func _draw_smoke() -> void:
+	# The recovered Smoke bitmap has inconsistent alpha data across importers.
+	# Draw the source-style rising dust directly for every rubble pile as well,
+	# so the construction-site plume is always present in the live world.
+	for index in range(buildings.size()):
+		var building: Dictionary = buildings[index]
+		if building.get("state", "rubble") != "rubble":
+			continue
+		_draw_rubble_dust(building.get("pos", Vector2.ZERO), index)
 	var texture := _load_texture("res://assets/original/effects/smoke.png")
 	if texture == null:
 		return
@@ -2248,6 +2256,16 @@ func _draw_smoke() -> void:
 		draw_set_transform(position - camera_position, 0.0, Vector2(scale, scale))
 		draw_texture(texture, Vector2.ZERO, Color(0.82, 0.94, 0.82, float(smoke.get("alpha", 1.0))))
 		draw_set_transform(-camera_position)
+
+func _draw_rubble_dust(origin: Vector2, seed: int) -> void:
+	for puff_index in range(3):
+		var phase := fmod(float(simulation_tick + seed * 17 + puff_index * 13), 54.0) / 54.0
+		var x_offset := sin((phase + float(puff_index) * 0.31) * TAU) * (4.0 + phase * 7.0)
+		var position := origin + Vector2(x_offset, -8.0 - phase * 34.0)
+		var radius := 3.0 + phase * 4.5
+		var alpha := 0.78 * (1.0 - phase)
+		draw_circle(position, radius, Color(0.79, 0.86, 0.76, alpha))
+		draw_circle(position + Vector2(-radius * 0.55, radius * 0.2), radius * 0.63, Color(0.89, 0.92, 0.84, alpha * 0.75))
 
 func _draw_bullets() -> void:
 	for bullet in bullets:
