@@ -18,7 +18,7 @@ const PLAYER_WEAPON_PIVOT := Vector2(0.1, 2.75)
 const PLAYER_WEAPON_DRAW_RECT := Rect2(-5.95, -6.8, 43.45, 14.25)
 const MUZZLE_FLASH_DRAW_SIZE := Vector2(14.0, 10.0)
 const PLAYER_HURT_FLASH_TICKS := 9
-const SMOKE_INITIAL_SCALE := 0.15
+const SMOKE_INITIAL_SCALE := 0.30
 const FRIENDLY_WEAPON_SCALE := 0.65
 const WEAPON_FRAME_BY_ID := {
 	"pistol": 1,
@@ -361,6 +361,8 @@ func _start_stage(number: int) -> void:
 	balloons.clear()
 	float_texts.clear()
 	smokes.clear()
+	small_clouds.clear()
+	big_clouds.clear()
 	_initialize_clouds()
 	# The supplied map PNGs are convenient reference renders, but they bake in
 	# a Player, pipes, rubble and health labels. Render the recovered individual
@@ -1069,6 +1071,7 @@ func _create_build_sites(stage: Dictionary) -> void:
 			"spawn_counter": 0,
 			"effect_counter": random.randi_range(0, 99),
 		})
+		_create_smoke(position + Vector2(random.randf_range(-12.0, 12.0), random.randf_range(-32.0, -16.0)))
 
 func _build_site_positions() -> Array:
 	var positions: Array = []
@@ -1122,7 +1125,7 @@ func _update_buildings() -> void:
 	for index in range(buildings.size()):
 		var site: Dictionary = buildings[index]
 		site["effect_counter"] = int(site.get("effect_counter", 0)) + 1
-		if site.get("state", "rubble") == "rubble" and int(site.get("effect_counter", 0)) % 40 == 0:
+		if site.get("state", "rubble") == "rubble" and int(site.get("effect_counter", 0)) % 24 == 0:
 			_create_smoke(site.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-18.0, 18.0), random.randf_range(-35.0, -16.0)))
 		if site.get("state", "rubble") != "complete":
 			buildings[index] = site
@@ -2028,12 +2031,23 @@ func _draw_screen_backdrop() -> void:
 func _draw_clouds() -> void:
 	for cloud in small_clouds:
 		var texture := _load_texture("res://assets/original/stage/small_cloud_%d.png" % int(cloud.get("frame", 1)))
+		var position: Vector2 = cloud.get("pos", Vector2.ZERO)
 		if texture != null:
-			draw_texture(texture, cloud.get("pos", Vector2.ZERO), Color(1.0, 1.0, 1.0, 0.72))
+			draw_texture_rect(texture, Rect2(position, texture.get_size() * 1.25), false, Color(1.0, 1.0, 1.0, 1.0))
+		_draw_cloud_puff(position, 0.55)
 	for cloud in big_clouds:
 		var texture := _load_texture("res://assets/original/stage/big_cloud_%d.png" % int(cloud.get("frame", 1)))
+		var position: Vector2 = cloud.get("pos", Vector2.ZERO)
 		if texture != null:
-			draw_texture(texture, cloud.get("pos", Vector2.ZERO), Color(1.0, 1.0, 1.0, 0.82))
+			draw_texture_rect(texture, Rect2(position, texture.get_size() * 1.45), false, Color(1.0, 1.0, 1.0, 1.0))
+		_draw_cloud_puff(position, 1.0)
+
+func _draw_cloud_puff(position: Vector2, scale: float) -> void:
+	var color := Color(0.89, 0.96, 0.92, 0.9)
+	draw_circle(position + Vector2(18.0, 15.0) * scale, 15.0 * scale, color)
+	draw_circle(position + Vector2(40.0, 9.0) * scale, 21.0 * scale, color)
+	draw_circle(position + Vector2(65.0, 16.0) * scale, 17.0 * scale, color)
+	draw_rect(Rect2(position + Vector2(15.0, 15.0) * scale, Vector2(55.0, 15.0) * scale), color)
 
 func _background_layer_rects() -> Dictionary:
 	var camera_delta := camera_position - INITIAL_BACKGROUND_CAMERA
@@ -2232,7 +2246,7 @@ func _draw_smoke() -> void:
 		var position: Vector2 = smoke.get("pos", Vector2.ZERO)
 		var scale := float(smoke.get("scale", SMOKE_INITIAL_SCALE))
 		draw_set_transform(position - camera_position, 0.0, Vector2(scale, scale))
-		draw_texture(texture, Vector2.ZERO, Color(1.0, 1.0, 1.0, float(smoke.get("alpha", 1.0))))
+		draw_texture(texture, Vector2.ZERO, Color(0.82, 0.94, 0.82, float(smoke.get("alpha", 1.0))))
 		draw_set_transform(-camera_position)
 
 func _draw_bullets() -> void:
