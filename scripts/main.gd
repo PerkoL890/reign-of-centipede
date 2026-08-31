@@ -131,7 +131,7 @@ const DIFFICULTY_HARD := "hard"
 const DIFFICULTY_RULES := {
 	DIFFICULTY_EASY: {"title": "EASY", "description": "More money, slower waves, weaker enemies.", "money_multiplier": 1.5, "wave_interval_multiplier": 1.2, "enemy_health_multiplier": 0.75, "enemy_speed_multiplier": 0.9, "spawn_multiplier": 1},
 	DIFFICULTY_NORMAL: {"title": "NORMAL", "description": "The intended enhanced-mode challenge.", "money_multiplier": 1.0, "wave_interval_multiplier": 1.0, "enemy_health_multiplier": 1.0, "enemy_speed_multiplier": 1.0, "spawn_multiplier": 1},
-	DIFFICULTY_HARD: {"title": "HARD", "description": "Less money, faster tough enemies, extra spawns.", "money_multiplier": 0.7, "wave_interval_multiplier": 0.78, "enemy_health_multiplier": 1.35, "enemy_speed_multiplier": 1.15, "spawn_multiplier": 2},
+	DIFFICULTY_HARD: {"title": "HARD", "description": "Fast tough enemies and extra spawns, with added loot.", "money_multiplier": 0.85, "wave_interval_multiplier": 0.78, "enemy_health_multiplier": 1.35, "enemy_speed_multiplier": 1.15, "spawn_multiplier": 2},
 }
 const GAME_MODE_RULES := {
 	GAME_MODE_FAITHFUL: {"title": "FAITHFUL CAMPAIGN", "description": "The recovered original: survive all 65 waves.", "target_waves": 65, "wave_interval": 900, "starting_money": -1},
@@ -851,8 +851,8 @@ func _handle_misc() -> bool:
 	var balloon_interval := GameData.BALLOON_SPAWN_INTERVAL_TICKS
 	var balloon_chance := GameData.BALLOON_SPAWN_CHANCE
 	if game_mode == GAME_MODE_RAPID_ASSAULT and difficulty == DIFFICULTY_HARD:
-		balloon_interval = 180
-		balloon_chance = 0.9
+		balloon_interval = 150
+		balloon_chance = 1.0
 	if balloon_clock > 0 and balloon_clock % balloon_interval == 0 and random.randf() < balloon_chance:
 		# Source c_mc coordinates: x=-200..700, y=300. Convert once to the
 		# map coordinate system used by this recreation.
@@ -1417,9 +1417,21 @@ func _handle_spawns() -> void:
 		_create_dock(str(dock_event.get("dock_id", "blue")), _choose_dock_enemy(dock_event))
 
 func _rapid_assault_source_wave() -> int:
-	# Fifteen Rapid Assault waves deliberately traverse the campaign's full
-	# enemy roster instead of spending most of the run on Small Flyers.
-	return mini(GameData.LAST_COMPLETED_WAVE, 1 + (wave - 1) * 4)
+	# Preserve a readable escalation: early flyers through roughly wave 8, then
+	# mid-tier enemies, with the campaign's strongest roster saved for the end.
+	# Hard uses the same curve across its longer 45-wave endurance run.
+	var progress := float(wave) / float(maxi(_target_wave_count(), 1))
+	if progress <= 0.54:
+		return maxi(1, int(round(1.0 + progress / 0.54 * 10.0)))
+	if progress <= 0.67:
+		return int(round(12.0 + (progress - 0.54) / 0.13 * 5.0))
+	if progress <= 0.80:
+		return int(round(18.0 + (progress - 0.67) / 0.13 * 7.0))
+	if progress <= 0.90:
+		return int(round(26.0 + (progress - 0.80) / 0.10 * 11.0))
+	if progress <= 0.97:
+		return int(round(38.0 + (progress - 0.90) / 0.07 * 11.0))
+	return mini(GameData.LAST_COMPLETED_WAVE, 50 + int((progress - 0.97) / 0.03 * 15.0))
 
 func _spawn_survival_pressure(spawn_tick: int) -> void:
 	# After the original's last authored band, survival keeps escalating rather
