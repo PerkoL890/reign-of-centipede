@@ -92,6 +92,10 @@ func _run() -> void:
 	game.wave = GameData.LAST_COMPLETED_WAVE + 1
 	game.stage_elapsed_ticks = 1
 	_expect(not game._handle_misc(), "Classic Survival should not win after the faithful campaign wave limit.")
+	game._start_stage(1, game.GAME_MODE_CLASSIC_SURVIVAL)
+	game.stage_elapsed_ticks = 480
+	game._handle_misc()
+	_expect(game.wave == 2 and game.enemies.size() >= 1, "Classic Survival should use rapid waves and add reinforcement enemies.")
 	game._start_stage(1, game.GAME_MODE_SETTLEMENT_DEFENSE)
 	_expect(game.settlement_core_indices.size() == 2, "Settlement Defense should create two protected starter buildings.")
 	_expect(not game._settlement_is_destroyed(), "An intact settlement should not be considered defeated.")

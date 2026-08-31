@@ -126,7 +126,7 @@ const GAME_MODE_SETTLEMENT_DEFENSE := "settlement_defense"
 const GAME_MODE_SANDBOX := "sandbox"
 const GAME_MODE_RULES := {
 	GAME_MODE_FAITHFUL: {"title": "FAITHFUL CAMPAIGN", "description": "The recovered original: survive all 65 waves.", "target_waves": 65, "wave_interval": 900, "starting_money": -1},
-	GAME_MODE_CLASSIC_SURVIVAL: {"title": "CLASSIC SURVIVAL", "description": "Survive indefinitely. Score and wave are the goal.", "target_waves": 0, "wave_interval": 720, "starting_money": 100},
+	GAME_MODE_CLASSIC_SURVIVAL: {"title": "CLASSIC SURVIVAL", "description": "Survive indefinitely. Score and wave are the goal.", "target_waves": 0, "wave_interval": 480, "starting_money": 100},
 	GAME_MODE_RAPID_ASSAULT: {"title": "RAPID ASSAULT", "description": "A compact, high-pressure 15-wave combat run.", "target_waves": 15, "wave_interval": 420, "starting_money": 250},
 	GAME_MODE_SETTLEMENT_DEFENSE: {"title": "SETTLEMENT DEFENSE", "description": "Protect the two starter buildings for 25 waves.", "target_waves": 25, "wave_interval": 600, "starting_money": 300},
 	GAME_MODE_SANDBOX: {"title": "BUILDER'S SANDBOX", "description": "Build and experiment freely; no loss or final wave.", "target_waves": 0, "wave_interval": 900, "starting_money": 999999},
@@ -827,6 +827,8 @@ func _handle_misc() -> bool:
 	var wave_clock := simulation_tick if game_mode == GAME_MODE_FAITHFUL else stage_elapsed_ticks
 	if game_mode != GAME_MODE_SANDBOX and wave_clock > 0 and wave_clock % wave_interval == 0:
 		wave += 1
+		if game_mode == GAME_MODE_CLASSIC_SURVIVAL:
+			_spawn_survival_wave_reinforcements()
 	# Loss deliberately wins this tie, as in MainTimeline.handleMisc().
 	if game_mode != GAME_MODE_SANDBOX and float(player.get("health", 0.0)) <= 0.0:
 		_finish_stage(false)
@@ -1376,11 +1378,22 @@ func _spawn_survival_pressure(spawn_tick: int) -> void:
 	# than silently becoming a static wave-50 loop.
 	if wave <= GameData.LAST_COMPLETED_WAVE:
 		return
-	var interval := maxi(45, 150 - (wave - GameData.LAST_COMPLETED_WAVE) * 4)
+	var interval := maxi(30, 120 - (wave - GameData.LAST_COMPLETED_WAVE) * 5)
 	if spawn_tick > 0 and spawn_tick % interval == 0:
-		var enemy_id := "flying_mech" if wave % 5 == 0 else "orange_flying"
-		var position: Vector2 = player.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-450.0, 450.0), random.randf_range(-300.0, -100.0))
-		_create_enemy(enemy_id, position)
+		var count := mini(6, 1 + int((wave - GameData.LAST_COMPLETED_WAVE) / 12))
+		for index in range(count):
+			var enemy_id := "flying_mech" if (wave + index) % 5 == 0 else "orange_flying"
+			_create_enemy(enemy_id, _survival_spawn_position(index))
+
+func _spawn_survival_wave_reinforcements() -> void:
+	var count := mini(8, 1 + int((wave - 1) / 4))
+	for index in range(count):
+		var enemy_id := "small_flying" if wave < 12 else ("orange_flying" if wave < 30 else "flying_big")
+		_create_enemy(enemy_id, _survival_spawn_position(index))
+
+func _survival_spawn_position(index: int) -> Vector2:
+	var horizontal_sign := -1.0 if index % 2 == 0 else 1.0
+	return player.get("pos", Vector2.ZERO) + Vector2(horizontal_sign * random.randf_range(160.0, 460.0), random.randf_range(-320.0, -100.0))
 
 func _choose_dock_enemy(event: Dictionary) -> String:
 	var distribution: Array = event.get("dock_enemy_distribution", [])
