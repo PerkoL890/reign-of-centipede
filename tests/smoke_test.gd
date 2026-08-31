@@ -39,6 +39,17 @@ func _run() -> void:
 	_expect(game.buildings.size() == 12, "Stage 1 should instantiate all 12 recovered rubble anchors.")
 	_expect_vector_close(game.buildings[0].get("pos", Vector2.ZERO), Vector2(436.55, 405.2), "Stage 1's first rubble anchor should use its source matrix position.")
 	_expect_vector_close(game.buildings[11].get("pos", Vector2.ZERO), Vector2(1098.55, 239.1), "Stage 1's final rubble anchor should use its source matrix position.")
+	# Each building's defender is anchored to the platform under that exact site;
+	# it must not be rehomed to the same global island as another building.
+	game.friendlies.clear()
+	game._create_friendly(game.buildings[0].get("pos", Vector2.ZERO), GameData.get_building("small_shack"))
+	game._create_friendly(game.buildings[2].get("pos", Vector2.ZERO), GameData.get_building("small_shack"))
+	_expect(game.friendlies.size() == 2, "Two separate building sites should create two defenders.")
+	if game.friendlies.size() == 2:
+		var first_home: Rect2 = game.friendlies[0].get("home_surface", Rect2())
+		var second_home: Rect2 = game.friendlies[1].get("home_surface", Rect2())
+		_expect(first_home.position != second_home.position, "Defenders from different Stage 1 platforms must retain distinct home surfaces.")
+	game.friendlies.clear()
 
 	# The root sky uses a source gradient plus two oversized transparent layers,
 	# not a repeated 650px screenshot.  Pin their registrations/parallax rates

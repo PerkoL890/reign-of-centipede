@@ -1152,12 +1152,17 @@ func _destroy_building(site: Dictionary) -> void:
 	_play_sound("explosion")
 
 func _create_friendly(position: Vector2, building_data: Dictionary) -> void:
-	var ground_y := _ground_y_at(position.x, position.y + 30.0, 0.0)
-	if is_finite(ground_y):
-		position.y = ground_y
+	var home_surface := _friendly_home_surface(position)
+	if home_surface.has_area():
+		# A defender belongs to the grass platform carrying its building, rather
+		# than to the global nearest-ground query.  This prevents several towers
+		# from visually collapsing their defenders onto one shared island.
+		position.x = clampf(position.x, home_surface.position.x + 6.0, home_surface.end.x - 6.0)
+		position.y = home_surface.position.y
 	friendlies.append({
 		"pos": position,
 		"home_pos": position,
+		"home_surface": home_surface,
 		"health": float(GameData.FRIENDLY_TOTAL_HEALTH),
 		"counter": 0,
 		"role": str(building_data.get("role", "fighter")),
@@ -1245,10 +1250,14 @@ func _update_carpenter(friendly: Dictionary) -> void:
 func _wander_friendly(friendly: Dictionary) -> void:
 	var position: Vector2 = friendly.get("pos", Vector2.ZERO)
 	var direction := float(friendly.get("move_dir", 1.0))
+	var home_surface: Rect2 = friendly.get("home_surface", Rect2())
 	if int(friendly.get("move_counter", 0)) > 30 and random.randf() < 0.004:
 		direction *= -1.0
 		friendly["move_counter"] = 0
 	var next_x := position.x + direction * GameData.FRIENDLY_MOVE_SPEED
+	if home_surface.has_area() and (next_x < home_surface.position.x + 5.0 or next_x > home_surface.end.x - 5.0):
+		direction *= -1.0
+		next_x = position.x + direction * GameData.FRIENDLY_MOVE_SPEED
 	var next_ground := _ground_y_at(next_x, position.y - 4.0, 0.0)
 	if not is_finite(next_ground) or next_ground > position.y + 25.0:
 		direction *= -1.0
@@ -1258,10 +1267,22 @@ func _wander_friendly(friendly: Dictionary) -> void:
 		next_x = position.x
 		next_ground = position.y
 	friendly["move_dir"] = direction
-	friendly["pos"] = Vector2(next_x, next_ground)
+	friendly["pos"] = Vector2(next_x, home_surface.position.y if home_surface.has_area() else next_ground)
 	if not bool(friendly.get("has_target", false)):
 		friendly["facing"] = direction
 		friendly["aim"] = Vector2(direction, 0.0)
+
+func _friendly_home_surface(position: Vector2) -> Rect2:
+	var best_surface := Rect2()
+	var best_distance := INF
+	for surface in _ground_surfaces():
+		if position.x < surface.position.x or position.x > surface.end.x:
+			continue
+		var distance := absf(position.y - surface.position.y)
+		if distance < best_distance:
+			best_distance = distance
+			best_surface = surface
+	return best_surface
 
 func _handle_spawns() -> void:
 	for event in GameData.scheduled_enemy_events(wave, simulation_tick):
