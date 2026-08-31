@@ -120,11 +120,13 @@ const MODE_CREDITS := "credits"
 const MODE_LOST := "lost"
 const MODE_WON := "won"
 const GAME_MODE_FAITHFUL := "faithful"
+const GAME_MODE_CLASSIC_SURVIVAL := "classic_survival"
 const GAME_MODE_RAPID_ASSAULT := "rapid_assault"
 const GAME_MODE_SETTLEMENT_DEFENSE := "settlement_defense"
 const GAME_MODE_SANDBOX := "sandbox"
 const GAME_MODE_RULES := {
 	GAME_MODE_FAITHFUL: {"title": "FAITHFUL CAMPAIGN", "description": "The recovered original: survive all 65 waves.", "target_waves": 65, "wave_interval": 900, "starting_money": -1},
+	GAME_MODE_CLASSIC_SURVIVAL: {"title": "CLASSIC SURVIVAL", "description": "Survive indefinitely. Score and wave are the goal.", "target_waves": 0, "wave_interval": 720, "starting_money": 100},
 	GAME_MODE_RAPID_ASSAULT: {"title": "RAPID ASSAULT", "description": "A compact, high-pressure 15-wave combat run.", "target_waves": 15, "wave_interval": 420, "starting_money": 250},
 	GAME_MODE_SETTLEMENT_DEFENSE: {"title": "SETTLEMENT DEFENSE", "description": "Protect the two starter buildings for 25 waves.", "target_waves": 25, "wave_interval": 600, "starting_money": 300},
 	GAME_MODE_SANDBOX: {"title": "BUILDER'S SANDBOX", "description": "Build and experiment freely; no loss or final wave.", "target_waves": 0, "wave_interval": 900, "starting_money": 999999},
@@ -286,14 +288,14 @@ func _show_game_mode_select(number: int) -> void:
 	_clear_ui()
 	_add_full_screen_panel(Color("#08162b"))
 	_add_title("STAGE %d — SELECT MODE" % number, Vector2(80, 24), Vector2(490, 36), 23, Color("#e7f7d2"))
-	var modes := [GAME_MODE_FAITHFUL, GAME_MODE_RAPID_ASSAULT, GAME_MODE_SETTLEMENT_DEFENSE, GAME_MODE_SANDBOX]
+	var modes := [GAME_MODE_FAITHFUL, GAME_MODE_CLASSIC_SURVIVAL, GAME_MODE_RAPID_ASSAULT, GAME_MODE_SETTLEMENT_DEFENSE, GAME_MODE_SANDBOX]
 	for index in range(modes.size()):
 		var mode_id: String = modes[index]
 		var rules: Dictionary = GAME_MODE_RULES[mode_id]
-		var row := index / 2
-		var column := index % 2
+		var row := index / 3
+		var column := index % 3
 		var label := "%s\n%s" % [rules.get("title", mode_id), rules.get("description", "")]
-		_add_button(label, Vector2(45 + column * 283, 95 + row * 115), Vector2(270, 98), _start_stage.bind(number, mode_id), 13)
+		_add_button(label, Vector2(24 + column * 205, 88 + row * 116), Vector2(192, 100), _start_stage.bind(number, mode_id), 11)
 	_add_button("BACK", Vector2(235, 358), Vector2(180, 34), _show_stage_select, 14)
 	queue_redraw()
 
@@ -1363,9 +1365,22 @@ func _handle_spawns() -> void:
 		else:
 			spawn_position = player.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-500.0, 500.0), random.randf_range(-400.0, 400.0))
 		_create_enemy(str(event.get("enemy_id", "small_flying")), spawn_position)
+	if game_mode == GAME_MODE_CLASSIC_SURVIVAL:
+		_spawn_survival_pressure(spawn_tick)
 	var dock_event: Dictionary = GameData.scheduled_dock_event(wave, spawn_tick, stage_id)
 	if not dock_event.is_empty() and docks.size() < GameData.MAX_DOCKS:
 		_create_dock(str(dock_event.get("dock_id", "blue")), _choose_dock_enemy(dock_event))
+
+func _spawn_survival_pressure(spawn_tick: int) -> void:
+	# After the original's last authored band, survival keeps escalating rather
+	# than silently becoming a static wave-50 loop.
+	if wave <= GameData.LAST_COMPLETED_WAVE:
+		return
+	var interval := maxi(45, 150 - (wave - GameData.LAST_COMPLETED_WAVE) * 4)
+	if spawn_tick > 0 and spawn_tick % interval == 0:
+		var enemy_id := "flying_mech" if wave % 5 == 0 else "orange_flying"
+		var position: Vector2 = player.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-450.0, 450.0), random.randf_range(-300.0, -100.0))
+		_create_enemy(enemy_id, position)
 
 func _choose_dock_enemy(event: Dictionary) -> String:
 	var distribution: Array = event.get("dock_enemy_distribution", [])
