@@ -91,6 +91,11 @@ func _run() -> void:
 	game.stage_elapsed_ticks = 420
 	game._handle_misc()
 	_expect(game.wave == 2, "Rapid Assault should advance at its compact wave interval.")
+	game.wave = 14
+	_expect(game._rapid_assault_source_wave() > 50, "Rapid Assault should reach the late-game enemy roster within its short run.")
+	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT, game.DIFFICULTY_HARD)
+	_expect(game._target_wave_count() == 45, "Hard Rapid Assault should be a 45-wave endurance run.")
+	_expect(game.GAME_MODE_RULES[game.GAME_MODE_RAPID_ASSAULT].get("wave_interval", 0) > 180, "Hard Rapid Assault loot cadence should be an explicit enhanced override, not the base mode cadence.")
 	game._start_stage(1, game.GAME_MODE_CLASSIC_SURVIVAL)
 	game.wave = GameData.LAST_COMPLETED_WAVE + 1
 	game.stage_elapsed_ticks = 1

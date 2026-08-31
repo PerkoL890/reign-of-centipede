@@ -847,7 +847,13 @@ func _tick() -> void:
 	queue_redraw()
 
 func _handle_misc() -> bool:
-	if simulation_tick % GameData.BALLOON_SPAWN_INTERVAL_TICKS == 0 and random.randf() > 0.4:
+	var balloon_clock := simulation_tick if game_mode == GAME_MODE_FAITHFUL else stage_elapsed_ticks
+	var balloon_interval := GameData.BALLOON_SPAWN_INTERVAL_TICKS
+	var balloon_chance := GameData.BALLOON_SPAWN_CHANCE
+	if game_mode == GAME_MODE_RAPID_ASSAULT and difficulty == DIFFICULTY_HARD:
+		balloon_interval = 180
+		balloon_chance = 0.9
+	if balloon_clock > 0 and balloon_clock % balloon_interval == 0 and random.randf() < balloon_chance:
 		# Source c_mc coordinates: x=-200..700, y=300. Convert once to the
 		# map coordinate system used by this recreation.
 		_create_balloon(_source_pixels_to_map(Vector2(random.randf_range(-200.0, 700.0), 300.0)), true)
@@ -866,11 +872,16 @@ func _handle_misc() -> bool:
 		_set_status("The settlement has fallen.")
 		_finish_stage(false)
 		return true
-	var target_waves := int(rules.get("target_waves", GameData.LAST_COMPLETED_WAVE))
+	var target_waves := _target_wave_count()
 	if target_waves > 0 and wave > target_waves:
 		_finish_stage(true)
 		return true
 	return false
+
+func _target_wave_count() -> int:
+	if game_mode == GAME_MODE_RAPID_ASSAULT and difficulty == DIFFICULTY_HARD:
+		return 45
+	return int(GAME_MODE_RULES[game_mode].get("target_waves", GameData.LAST_COMPLETED_WAVE))
 
 func _update_player() -> void:
 	if player.is_empty():
@@ -1389,8 +1400,9 @@ func _handle_spawns() -> void:
 	var spawn_tick := simulation_tick if game_mode == GAME_MODE_FAITHFUL else stage_elapsed_ticks
 	if game_mode == GAME_MODE_RAPID_ASSAULT:
 		spawn_tick *= 2
+	var spawn_wave := _rapid_assault_source_wave() if game_mode == GAME_MODE_RAPID_ASSAULT else wave
 	var difficulty_rules: Dictionary = DIFFICULTY_RULES[difficulty]
-	for event in GameData.scheduled_enemy_events(wave, spawn_tick):
+	for event in GameData.scheduled_enemy_events(spawn_wave, spawn_tick):
 		for spawn_index in range(int(difficulty_rules.get("spawn_multiplier", 1))):
 			var spawn_position: Vector2
 			if str(event.get("spawn_kind", "player_relative")) == "fixed":
@@ -1400,9 +1412,14 @@ func _handle_spawns() -> void:
 			_create_enemy(str(event.get("enemy_id", "small_flying")), spawn_position)
 	if game_mode == GAME_MODE_CLASSIC_SURVIVAL:
 		_spawn_survival_pressure(spawn_tick)
-	var dock_event: Dictionary = GameData.scheduled_dock_event(wave, spawn_tick, stage_id)
+	var dock_event: Dictionary = GameData.scheduled_dock_event(spawn_wave, spawn_tick, stage_id)
 	if not dock_event.is_empty() and docks.size() < GameData.MAX_DOCKS:
 		_create_dock(str(dock_event.get("dock_id", "blue")), _choose_dock_enemy(dock_event))
+
+func _rapid_assault_source_wave() -> int:
+	# Fifteen Rapid Assault waves deliberately traverse the campaign's full
+	# enemy roster instead of spending most of the run on Small Flyers.
+	return mini(GameData.LAST_COMPLETED_WAVE, 1 + (wave - 1) * 4)
 
 func _spawn_survival_pressure(spawn_tick: int) -> void:
 	# After the original's last authored band, survival keeps escalating rather
