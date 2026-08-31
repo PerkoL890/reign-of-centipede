@@ -19,6 +19,7 @@ const PLAYER_WEAPON_DRAW_RECT := Rect2(-5.95, -6.8, 43.45, 14.25)
 const MUZZLE_FLASH_DRAW_SIZE := Vector2(14.0, 10.0)
 const PLAYER_HURT_FLASH_TICKS := 9
 const SMOKE_INITIAL_SCALE := 0.15
+const FRIENDLY_WEAPON_SCALE := 0.65
 const WEAPON_FRAME_BY_ID := {
 	"pistol": 1,
 	"desert_eagle": 2,
@@ -142,6 +143,10 @@ var float_texts: Array = []
 var smokes: Array = []
 var small_clouds: Array = []
 var big_clouds: Array = []
+var cheats_available := false
+var infinite_money_cheat := false
+var instant_build_cheat := false
+var fast_npc_spawn_cheat := false
 var purchased_weapons := {"pistol": true}
 var equipped_weapon := "pistol"
 var selected_building := ""
@@ -171,6 +176,7 @@ var next_balloon_id := 1
 
 func _ready() -> void:
 	random.randomize()
+	cheats_available = OS.get_cmdline_user_args().has("--cheats")
 	# Keep the original Player components independent. The full Player export is
 	# padded and loses the nested body/weapon registration points, while these
 	# direct child exports let the body animate and the weapon track the mouse.
@@ -190,6 +196,8 @@ func _ready() -> void:
 	add_child(music_player)
 	music_player.finished.connect(_restart_music_if_needed)
 	_show_main_menu()
+	if cheats_available:
+		call_deferred("_show_cheat_menu")
 
 func _physics_process(_delta: float) -> void:
 	if mode != MODE_PLAY or paused:
@@ -198,6 +206,9 @@ func _physics_process(_delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F1 and cheats_available:
+			_show_cheat_menu()
+			return
 		if event.keycode == KEY_ESCAPE and (mode == MODE_STAGE_SELECT or mode == MODE_CREDITS):
 			_show_main_menu()
 			return
@@ -441,7 +452,47 @@ func _build_hud() -> void:
 	weapons_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	weapons_button.pressed.connect(_open_weapon_menu_from_hud)
 	ui_layer.add_child(weapons_button)
+	if cheats_available:
+		_add_button("CHEATS", Vector2(555, 409), Vector2(82, 25), _show_cheat_menu, 10)
 	_update_hud()
+
+func _show_cheat_menu() -> void:
+	if not cheats_available:
+		return
+	paused = true
+	_clear_ui()
+	_add_full_screen_panel(Color(0.02, 0.05, 0.10, 0.94))
+	_add_title("CHEAT MENU", Vector2(145, 72), Vector2(360, 42), 28, Color("#f6df74"))
+	_add_label("These options remain active until you close the game.", Vector2(92, 122), Vector2(466, 25), 13, Color("#c4d6cd"), HORIZONTAL_ALIGNMENT_CENTER)
+	_add_cheat_toggle("INFINITE MONEY", "Never spend your current balance.", Vector2(155, 170), "infinite_money")
+	_add_cheat_toggle("INSTANT BUILDING", "Finish a selected building immediately.", Vector2(155, 226), "instant_build")
+	_add_cheat_toggle("FAST NPC SPAWNING", "Friendly buildings spawn five times faster.", Vector2(155, 282), "fast_npc_spawn")
+	_add_button("CLOSE", Vector2(235, 352), Vector2(180, 38), _close_cheat_menu, 14)
+
+func _add_cheat_toggle(title: String, detail: String, position: Vector2, cheat_id: String) -> void:
+	var button := _add_button("%s: %s\n%s" % [title, "ON" if _cheat_enabled(cheat_id) else "OFF", detail], position, Vector2(340, 46), _toggle_cheat.bind(cheat_id), 12)
+	button.tooltip_text = detail
+
+func _cheat_enabled(cheat_id: String) -> bool:
+	match cheat_id:
+		"infinite_money": return infinite_money_cheat
+		"instant_build": return instant_build_cheat
+		"fast_npc_spawn": return fast_npc_spawn_cheat
+	return false
+
+func _toggle_cheat(cheat_id: String) -> void:
+	match cheat_id:
+		"infinite_money": infinite_money_cheat = not infinite_money_cheat
+		"instant_build": instant_build_cheat = not instant_build_cheat
+		"fast_npc_spawn": fast_npc_spawn_cheat = not fast_npc_spawn_cheat
+	_show_cheat_menu()
+
+func _close_cheat_menu() -> void:
+	paused = false
+	if mode == MODE_PLAY:
+		_build_hud()
+	else:
+		_show_main_menu()
 
 func _open_weapon_menu_from_hud() -> void:
 	# Tutorial frame 6 points at this exact source button. In Flash that click
@@ -526,17 +577,20 @@ func _select_building(building_id: String) -> void:
 		return
 	var data: Dictionary = GameData.get_building(building_id)
 	var cost := int(data.get("cost", 0))
-	if money < cost:
+	if not infinite_money_cheat and money < cost:
 		_set_status("Not enough money for %s." % data.get("display_name", building_id))
 		_show_build_menu()
 		return
 	var site: Dictionary = buildings[building_menu_site_index]
-	money -= cost
+	if not infinite_money_cheat:
+		money -= cost
 	selected_building = building_id
 	site["id"] = building_id
 	site["constructing"] = true
 	site["build_health"] = 0.0
 	site["build_total"] = float(data.get("finished_health", 100)) * 3.0
+	if instant_build_cheat:
+		_complete_building(site)
 	buildings[building_menu_site_index] = site
 	building_menu_site_index = -1
 	paused = false
@@ -696,6 +750,8 @@ func _panel_style(background: Color, border: Color, border_width: int) -> StyleB
 func _tick() -> void:
 	simulation_tick += 1
 	shoot_counter += 1
+	if infinite_money_cheat:
+		money = 999999
 	_update_player()
 	# Flash handles its timer, balloons and the loss/win checks before it makes
 	# this frame's ordinary enemy/dock spawn decisions.
@@ -905,9 +961,9 @@ func _friendly_weapon_pose(friendly: Dictionary) -> Dictionary:
 	aim = aim.normalized()
 	var frame := int(WEAPON_FRAME_BY_ID.get(str(friendly.get("weapon", "pistol")), 1))
 	var rotation := aim.angle() if facing > 0.0 else aim.angle() + PI
-	var pivot := position + Vector2(0.0, -11.0)
-	var flash_position: Vector2 = WEAPON_FLASH_POSITIONS.get(frame, WEAPON_FLASH_POSITIONS[1]) * 0.43
-	var muzzle_local := (flash_position - Vector2(8.6, 0.0))
+	var pivot := position + Vector2(0.0, -13.0)
+	var flash_position: Vector2 = WEAPON_FLASH_POSITIONS.get(frame, WEAPON_FLASH_POSITIONS[1]) * FRIENDLY_WEAPON_SCALE
+	var muzzle_local := flash_position - Vector2(20.0 * FRIENDLY_WEAPON_SCALE, 0.0)
 	var muzzle_world := pivot + Vector2(muzzle_local.x * facing, muzzle_local.y).rotated(rotation)
 	return {"frame": frame, "facing": facing, "rotation": rotation, "pivot": pivot, "flash_position": flash_position, "muzzle_position": muzzle_world}
 
@@ -920,7 +976,7 @@ func _draw_friendly_weapon(friendly: Dictionary, visual_position: Vector2) -> vo
 	# Keep the visual bob aligned with the friendly body while bullets retain the
 	# simulation's native hand origin.
 	pivot.y += visual_position.y - friendly.get("pos", visual_position).y
-	draw_set_transform(pivot - camera_position, float(pose.get("rotation", 0.0)), Vector2(float(pose.get("facing", 1.0)) * 0.43, 0.43))
+	draw_set_transform(pivot - camera_position, float(pose.get("rotation", 0.0)), Vector2(float(pose.get("facing", 1.0)) * FRIENDLY_WEAPON_SCALE, FRIENDLY_WEAPON_SCALE))
 	draw_texture_rect(texture, PLAYER_WEAPON_DRAW_RECT, false)
 	var flash_ticks := int(friendly.get("muzzle_flash_ticks", 0))
 	var flash_texture := _load_texture("res://assets/original/player/muzzle_flash.png")
@@ -939,7 +995,7 @@ func _build_or_repair() -> void:
 		if not bool(site.get("constructing", false)):
 			_open_build_menu_nearby()
 			return
-		site["build_health"] = float(site.get("build_health", 0.0)) + 2.0
+		site["build_health"] = float(site.get("build_total", 0.0)) if instant_build_cheat else float(site.get("build_health", 0.0)) + 2.0
 		if float(site.get("build_health", 0.0)) >= float(site.get("build_total", 1.0)):
 			_complete_building(site)
 		buildings[site_index] = site
@@ -1077,7 +1133,10 @@ func _update_buildings() -> void:
 			continue
 		var data: Dictionary = GameData.get_building(str(site.get("id", "")))
 		site["spawn_counter"] = int(site.get("spawn_counter", 0)) + 1
-		if int(site.get("spawn_counter", 0)) % int(data.get("spawn_interval_ticks", 99_999)) == 0 and friendlies.size() < GameData.MAX_FRIENDLIES:
+		var spawn_interval := int(data.get("spawn_interval_ticks", 99_999))
+		if fast_npc_spawn_cheat:
+			spawn_interval = maxi(10, spawn_interval / 5)
+		if int(site.get("spawn_counter", 0)) % spawn_interval == 0 and friendlies.size() < GameData.MAX_FRIENDLIES:
 			_create_friendly(site.get("pos", Vector2.ZERO) + Vector2(15, -5), data)
 		buildings[index] = site
 
@@ -1093,6 +1152,9 @@ func _destroy_building(site: Dictionary) -> void:
 	_play_sound("explosion")
 
 func _create_friendly(position: Vector2, building_data: Dictionary) -> void:
+	var ground_y := _ground_y_at(position.x, position.y + 30.0, 0.0)
+	if is_finite(ground_y):
+		position.y = ground_y
 	friendlies.append({
 		"pos": position,
 		"health": float(GameData.FRIENDLY_TOTAL_HEALTH),
@@ -1169,7 +1231,7 @@ func _update_carpenter(friendly: Dictionary) -> void:
 		if direction != 0.0:
 			friendly["facing"] = direction
 			friendly["aim"] = Vector2(direction, 0.0)
-		var ground_y := _ground_y_at(position.x, position.y)
+		var ground_y := _ground_y_at(position.x, position.y, 0.0)
 		if is_finite(ground_y):
 			position.y = ground_y
 		friendly["pos"] = position
@@ -1186,11 +1248,11 @@ func _wander_friendly(friendly: Dictionary) -> void:
 		direction *= -1.0
 		friendly["move_counter"] = 0
 	var next_x := position.x + direction * GameData.FRIENDLY_MOVE_SPEED
-	var next_ground := _ground_y_at(next_x, position.y - 4.0)
+	var next_ground := _ground_y_at(next_x, position.y - 4.0, 0.0)
 	if not is_finite(next_ground) or next_ground > position.y + 25.0:
 		direction *= -1.0
 		next_x = position.x + direction * GameData.FRIENDLY_MOVE_SPEED
-		next_ground = _ground_y_at(next_x, position.y - 4.0)
+		next_ground = _ground_y_at(next_x, position.y - 4.0, 0.0)
 	if not is_finite(next_ground):
 		next_x = position.x
 		next_ground = position.y
@@ -1414,17 +1476,22 @@ func _initialize_clouds() -> void:
 	if not small_clouds.is_empty() or not big_clouds.is_empty():
 		return
 	for index in range(9):
-		small_clouds.append({"pos": Vector2(random.randf_range(-300.0, 1000.0), random.randf_range(-20.0, 440.0)), "frame": random.randi_range(1, 3), "speed": 0.1 + float(index) / 27.0})
+		var direction := -1.0 if index % 2 == 0 else 1.0
+		small_clouds.append({"pos": Vector2(random.randf_range(-80.0, 640.0), random.randf_range(25.0, 410.0)), "frame": random.randi_range(1, 3), "speed": (0.24 + float(index) / 18.0) * direction, "direction": direction})
 	for index in range(8):
-		big_clouds.append({"pos": Vector2(random.randf_range(-300.0, 1000.0), random.randf_range(-20.0, 390.0)), "frame": random.randi_range(1, 3), "speed": 0.13 + float(index) / 8.0})
+		var direction := -1.0 if index % 2 == 0 else 1.0
+		big_clouds.append({"pos": Vector2(random.randf_range(-80.0, 620.0), random.randf_range(30.0, 385.0)), "frame": random.randi_range(1, 3), "speed": (0.32 + float(index) / 11.0) * direction, "direction": direction})
 
 func _update_clouds() -> void:
 	for clouds in [small_clouds, big_clouds]:
 		for cloud in clouds:
 			var position: Vector2 = cloud.get("pos", Vector2.ZERO)
-			position.x -= float(cloud.get("speed", 0.1))
-			if position.x < -300.0:
-				position.x = 1000.0
+			position.x += float(cloud.get("speed", -0.1))
+			var direction := float(cloud.get("direction", -1.0))
+			if direction < 0.0 and position.x < -230.0:
+				position.x = 720.0
+			elif direction > 0.0 and position.x > 720.0:
+				position.x = -230.0
 			cloud["pos"] = position
 
 func _kill_enemy(index: int) -> void:
