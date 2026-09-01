@@ -161,6 +161,7 @@ var difficulty := DIFFICULTY_NORMAL
 var stage_elapsed_ticks := 0
 var settlement_core_indices: Array[int] = []
 var active_wave_modifier := ""
+var elite_defeats := 0
 var simulation_tick := 0
 var shoot_counter := 0
 var wave := 1
@@ -418,6 +419,7 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	difficulty = selected_difficulty if DIFFICULTY_RULES.has(selected_difficulty) else DIFFICULTY_NORMAL
 	stage_elapsed_ticks = 0
 	active_wave_modifier = ""
+	elite_defeats = 0
 	settlement_core_indices.clear()
 	mode = MODE_PLAY
 	paused = false
@@ -542,6 +544,7 @@ func _build_hud() -> void:
 	_add_hud_value("workers", Vector2(7, 42), Vector2(190, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
 	_add_hud_value("modifier", Vector2(7, 56), Vector2(230, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
 	_add_hud_value("ability", Vector2(7, 70), Vector2(230, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
+	_add_hud_value("objective", Vector2(7, 84), Vector2(270, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
 	# The original artwork exposes a weapons button at the upper right. Keep the
 	# source click target without replacing it with a modern-looking control.
 	var weapons_button := Button.new()
@@ -965,6 +968,7 @@ func _handle_misc() -> bool:
 		if game_mode == GAME_MODE_CLASSIC_SURVIVAL:
 			_spawn_survival_wave_reinforcements()
 		_set_wave_modifier()
+		_spawn_elite_for_wave()
 	# Loss deliberately wins this tie, as in MainTimeline.handleMisc().
 	if game_mode != GAME_MODE_SANDBOX and float(player.get("health", 0.0)) <= 0.0:
 		_finish_stage(false)
@@ -987,6 +991,25 @@ func _set_wave_modifier() -> void:
 	active_wave_modifier = "swarm" if cycle == 2 else ("armored" if cycle == 3 else ("raiders" if cycle == 0 else ""))
 	if not active_wave_modifier.is_empty():
 		_set_status("Wave %d modifier — %s" % [wave, WAVE_MODIFIERS[active_wave_modifier].get("title", "")])
+
+func _spawn_elite_for_wave() -> void:
+	if game_mode == GAME_MODE_FAITHFUL or game_mode == GAME_MODE_SANDBOX or wave < 5 or wave % 5 != 0:
+		return
+	for enemy in enemies:
+		if bool(enemy.get("elite", false)):
+			return
+	var source_wave := _rapid_assault_source_wave() if game_mode == GAME_MODE_RAPID_ASSAULT else wave
+	var enemy_id := "small_flying" if source_wave < 12 else ("flying_big" if source_wave < 30 else "purple_centipede")
+	_create_enemy(enemy_id, _survival_spawn_position(0))
+	if enemies.is_empty():
+		return
+	var elite: Dictionary = enemies.back()
+	elite["elite"] = true
+	elite["health"] = float(elite.get("health", 1.0)) * 2.6
+	elite["elite_max_health"] = float(elite.get("health", 1.0))
+	elite["loot_carrier"] = true
+	enemies[enemies.size() - 1] = elite
+	_set_status("ELITE INCOMING — %s captain" % GameData.get_enemy(enemy_id).get("display_name", enemy_id))
 
 func _target_wave_count() -> int:
 	if game_mode == GAME_MODE_RAPID_ASSAULT and difficulty == DIFFICULTY_HARD:
@@ -1857,6 +1880,13 @@ func _kill_enemy(index: int) -> void:
 		_create_box(position)
 		boxes.back()["reward_multiplier"] = 2
 		_create_float_text("LOOT CARRIER", position + Vector2(-20.0, -26.0))
+	if bool(enemy.get("elite", false)):
+		elite_defeats += 1
+		_create_box(position + Vector2(-14.0, 0.0))
+		boxes.back()["reward_multiplier"] = 3
+		_create_heart(position + Vector2(14.0, 0.0))
+		_create_float_text("ELITE DEFEATED +SUPPLIES", position + Vector2(-42.0, -36.0))
+		_set_status("Elite captain defeated — supply cache recovered.")
 	score += int(data.get("worth", 1)) * 4
 	enemies.remove_at(index)
 	_play_sound("explosion")
@@ -2651,6 +2681,10 @@ func _draw_enemies() -> void:
 			draw_arc(position + Vector2(0.0, body_top - 6.0), 13.0, 0.0, TAU, 16, Color("#f4d75a"), 1.2)
 		if bool(enemy.get("raider", false)) and interface_font != null:
 			draw_string(interface_font, position + Vector2(-4.0, body_top - 11.0), "!", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 10, Color("#ff8b65"))
+		if bool(enemy.get("elite", false)):
+			draw_arc(position + Vector2(0.0, body_top - 8.0), 17.0, 0.0, TAU, 20, Color("#d990ff"), 1.6)
+			if interface_font != null:
+				draw_string(interface_font, position + Vector2(-13.0, body_top - 17.0), "ELITE", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 8, Color("#e9b6ff"))
 
 func _enemy_animation_offset(enemy: Dictionary) -> Vector2:
 	var counter := float(enemy.get("counter", 0))
@@ -2883,6 +2917,17 @@ func _update_hud() -> void:
 			hud_labels["modifier"].text = str(WAVE_MODIFIERS.get(active_wave_modifier, {}).get("title", ""))
 		if hud_labels.has("ability"):
 			hud_labels["ability"].text = "Q: SALVAGE PULSE %s" % ("READY" if ability_cooldown_ticks == 0 else "%ds" % int(ceil(float(ability_cooldown_ticks) / 30.0)))
+		if hud_labels.has("objective"):
+			var objective := ""
+			if game_mode == GAME_MODE_RAPID_ASSAULT:
+				objective = "ASSAULT: elite captains defeated %d" % elite_defeats
+			elif game_mode == GAME_MODE_SETTLEMENT_DEFENSE:
+				objective = "DEFENSE: keep both starter buildings standing"
+			elif game_mode == GAME_MODE_CLASSIC_SURVIVAL:
+				objective = "SURVIVAL: reach the next elite at wave %d" % (int(ceil(float(wave) / 5.0)) * 5)
+			elif game_mode == GAME_MODE_SANDBOX:
+				objective = "SANDBOX: build, test, and dismantle freely"
+			hud_labels["objective"].text = objective
 		if hud_health_fill != null:
 			hud_health_fill.size.x = 148.0 * clampf(float(health) / float(GameData.PLAYER_MAX_HEALTH), 0.0, 1.0)
 	if status_label != null:

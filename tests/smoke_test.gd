@@ -552,6 +552,17 @@ func _run() -> void:
 	_expect(game.ability_cooldown_ticks == 300 and game.ability_pulse_ticks == 20, "Salvage pulse should begin its visual pulse and cooldown together.")
 	_expect(float(game.coins[0].get("vel", Vector2.ZERO).x) < 0.0 and int(game.enemies[0].get("stun_ticks", 0)) == 75, "Salvage pulse should magnetize coins and stun nearby enemies.")
 
+	# Every fifth enhanced wave gains an elite captain with a marked reward cache.
+	game.enemies.clear()
+	game.boxes.clear()
+	game.wave = 5
+	game._spawn_elite_for_wave()
+	_expect(game.enemies.size() == 1 and bool(game.enemies[0].get("elite", false)), "Enhanced wave five should introduce one elite captain.")
+	if not game.enemies.is_empty():
+		game.enemies[0]["health"] = 0.0
+		game._update_enemies()
+	_expect(game.elite_defeats == 1 and game.boxes.size() >= 2, "Defeating an elite should count toward the mode objective and leave bonus supply caches.")
+
 	# Enemy visuals use the original parent wrapper frames at their native scale,
 	# not the old hand-authored 24/42/48px substitute rectangles.
 	_expect_vector_close(game._enemy_render_size("green_centipede"), Vector2(69.0, 161.0), "Green Centipede should retain its original native body dimensions.")
