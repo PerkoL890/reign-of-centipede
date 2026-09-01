@@ -24,6 +24,12 @@ const BAZOOKA_EXPLOSION_RADIUS := 72.0
 const BAZOOKA_EXPLOSION_DAMAGE := 72.0
 const FLAMER_BURN_MAX_STACKS := 6
 const FLAMER_BURN_DURATION_TICKS := 90
+const WAVE_MODIFIERS := {
+	"": {"title": "", "health_multiplier": 1.0, "extra_spawns": 0},
+	"swarm": {"title": "SWARM: extra contacts", "health_multiplier": 1.0, "extra_spawns": 1},
+	"armored": {"title": "ARMORED: tougher bodies", "health_multiplier": 1.28, "extra_spawns": 0},
+	"raiders": {"title": "RAIDERS: target buildings", "health_multiplier": 1.08, "extra_spawns": 0},
+}
 const WEAPON_FRAME_BY_ID := {
 	"pistol": 1,
 	"desert_eagle": 2,
@@ -154,6 +160,7 @@ var selected_game_mode := GAME_MODE_FAITHFUL
 var difficulty := DIFFICULTY_NORMAL
 var stage_elapsed_ticks := 0
 var settlement_core_indices: Array[int] = []
+var active_wave_modifier := ""
 var simulation_tick := 0
 var shoot_counter := 0
 var wave := 1
@@ -403,6 +410,7 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	game_mode = selected_mode if GAME_MODE_RULES.has(selected_mode) else GAME_MODE_FAITHFUL
 	difficulty = selected_difficulty if DIFFICULTY_RULES.has(selected_difficulty) else DIFFICULTY_NORMAL
 	stage_elapsed_ticks = 0
+	active_wave_modifier = ""
 	settlement_core_indices.clear()
 	mode = MODE_PLAY
 	paused = false
@@ -520,6 +528,7 @@ func _build_hud() -> void:
 	_add_hud_value("wave", Vector2(371, 10), Vector2(44, 27), 18, HORIZONTAL_ALIGNMENT_RIGHT, hud_number_font)
 	_add_hud_value("score", Vector2(432, 10), Vector2(95, 27), 18, HORIZONTAL_ALIGNMENT_RIGHT, hud_number_font)
 	_add_hud_value("workers", Vector2(7, 42), Vector2(190, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
+	_add_hud_value("modifier", Vector2(7, 56), Vector2(230, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
 	# The original artwork exposes a weapons button at the upper right. Keep the
 	# source click target without replacing it with a modern-looking control.
 	var weapons_button := Button.new()
@@ -942,6 +951,7 @@ func _handle_misc() -> bool:
 		wave += 1
 		if game_mode == GAME_MODE_CLASSIC_SURVIVAL:
 			_spawn_survival_wave_reinforcements()
+		_set_wave_modifier()
 	# Loss deliberately wins this tie, as in MainTimeline.handleMisc().
 	if game_mode != GAME_MODE_SANDBOX and float(player.get("health", 0.0)) <= 0.0:
 		_finish_stage(false)
@@ -955,6 +965,15 @@ func _handle_misc() -> bool:
 		_finish_stage(true)
 		return true
 	return false
+
+func _set_wave_modifier() -> void:
+	if game_mode == GAME_MODE_FAITHFUL or game_mode == GAME_MODE_SANDBOX:
+		active_wave_modifier = ""
+		return
+	var cycle := wave % 4
+	active_wave_modifier = "swarm" if cycle == 2 else ("armored" if cycle == 3 else ("raiders" if cycle == 0 else ""))
+	if not active_wave_modifier.is_empty():
+		_set_status("Wave %d modifier — %s" % [wave, WAVE_MODIFIERS[active_wave_modifier].get("title", "")])
 
 func _target_wave_count() -> int:
 	if game_mode == GAME_MODE_RAPID_ASSAULT and difficulty == DIFFICULTY_HARD:
@@ -1492,8 +1511,10 @@ func _handle_spawns() -> void:
 		spawn_tick *= 2
 	var spawn_wave := _rapid_assault_source_wave() if game_mode == GAME_MODE_RAPID_ASSAULT else wave
 	var difficulty_rules: Dictionary = DIFFICULTY_RULES[difficulty]
+	var modifier: Dictionary = WAVE_MODIFIERS.get(active_wave_modifier, WAVE_MODIFIERS[""])
 	for event in GameData.scheduled_enemy_events(spawn_wave, spawn_tick):
-		for spawn_index in range(int(difficulty_rules.get("spawn_multiplier", 1))):
+		var spawn_count := int(difficulty_rules.get("spawn_multiplier", 1)) + int(modifier.get("extra_spawns", 0))
+		for spawn_index in range(spawn_count):
 			var spawn_position: Vector2
 			if str(event.get("spawn_kind", "player_relative")) == "fixed":
 				spawn_position = _source_pixels_to_map(Vector2(-540.0, -410.0)) + Vector2(spawn_index * 28.0, 0.0)
@@ -1562,17 +1583,20 @@ func _create_enemy(enemy_id: String, position: Vector2) -> void:
 	if data.is_empty():
 		return
 	var difficulty_rules: Dictionary = DIFFICULTY_RULES[difficulty]
+	var modifier: Dictionary = WAVE_MODIFIERS.get(active_wave_modifier, WAVE_MODIFIERS[""])
 	var speed := (float(data.get("base_speed", 1.8)) + random.randf() * GameData.ENEMY_SPEED_VARIANCE) * float(difficulty_rules.get("enemy_speed_multiplier", 1.0))
+	var is_raider := active_wave_modifier == "raiders" and random.randf() < 0.45
 	enemies.append({
 		"id": enemy_id,
 		"pos": position,
-		"health": float(data.get("health", 9)) * float(difficulty_rules.get("enemy_health_multiplier", 1.0)),
+		"health": float(data.get("health", 9)) * float(difficulty_rules.get("enemy_health_multiplier", 1.0)) * float(modifier.get("health_multiplier", 1.0)),
 		"counter": 0,
 		"speed": speed,
 		"movement": str(data.get("movement", "walk")),
 		"can_shoot": bool(data.get("can_shoot", false)),
-		"targets_objects": random.randf() > 0.6,
-		"target_group": "friendly" if random.randf() > 0.2 else "building",
+		"targets_objects": is_raider or random.randf() > 0.6,
+		"target_group": "building" if is_raider else ("friendly" if random.randf() > 0.2 else "building"),
+		"raider": is_raider,
 		"move_dir": -1.0 if str(data.get("movement", "")) == "flying_shoot" else (-1.0 if random.randf() < 0.5 else 1.0),
 		"default_dir": -1.0 if random.randf() < 0.5 else 1.0,
 		"move_counter": 0,
@@ -1816,6 +1840,7 @@ func _create_dock(dock_id: String, enemy_id: String) -> void:
 		"health": float(data.get("health", 90)),
 		"counter": 0,
 		"spawn_interval": int(data.get("spawn_interval_ticks", 190)),
+		"phase": 0,
 		"island_index": island_index,
 		"dock_side": "left" if random.randf() > 0.5 else "right",
 		"is_docked": false,
@@ -1832,6 +1857,13 @@ func _update_docks() -> void:
 			_play_sound("explosion")
 			continue
 		dock["counter"] = int(dock.get("counter", 0)) + 1
+		if game_mode != GAME_MODE_FAITHFUL:
+			var dock_data: Dictionary = GameData.get_dock(str(dock.get("id", "blue")))
+			var health_fraction := float(dock.get("health", 0.0)) / maxf(float(dock_data.get("health", 1)), 1.0)
+			var next_phase := 2 if health_fraction <= 0.33 else (1 if health_fraction <= 0.66 else 0)
+			if next_phase > int(dock.get("phase", 0)):
+				dock["phase"] = next_phase
+				_set_status("Dock enters %s phase!" % ("DESPERATE" if next_phase == 2 else "PRESSURE"))
 		var layout := StageLayout.layout_for(stage_id)
 		var islands: Array = layout.get("islands", [])
 		var island_index := int(dock.get("island_index", -1))
@@ -1863,7 +1895,10 @@ func _update_docks() -> void:
 			else:
 				dock["float_counter"] = 0
 		dock["pos"] = position
-		if bool(dock.get("is_docked", false)) and int(dock.get("counter", 0)) % int(dock.get("spawn_interval", 190)) == 0:
+		var spawn_interval := int(dock.get("spawn_interval", 190))
+		if game_mode != GAME_MODE_FAITHFUL:
+			spawn_interval = int(round(float(spawn_interval) * (0.78 if int(dock.get("phase", 0)) == 1 else (0.60 if int(dock.get("phase", 0)) >= 2 else 1.0))))
+		if bool(dock.get("is_docked", false)) and int(dock.get("counter", 0)) % spawn_interval == 0:
 			var count_before := enemies.size()
 			_create_enemy(str(dock.get("enemy_id", "small_green")), position)
 			if enemies.size() > count_before:
@@ -2451,7 +2486,8 @@ func _draw_docks() -> void:
 		var portal_frame := 1 + int(dock.get("counter", 0)) % 5
 		var portal_texture := _load_texture("res://assets/original/sprites/teleporter_%02d.png" % portal_frame)
 		if portal_texture != null:
-			draw_texture_rect(portal_texture, Rect2(position - Vector2(12.5, 23.5), Vector2(25.0, 47.0)), false)
+			var portal_tint := Color("#ffd35d") if int(dock.get("phase", 0)) == 1 else (Color("#ff6e55") if int(dock.get("phase", 0)) >= 2 else Color.WHITE)
+			draw_texture_rect(portal_texture, Rect2(position - Vector2(12.5, 23.5), Vector2(25.0, 47.0)), false, portal_tint)
 		var data: Dictionary = GameData.get_dock(dock_id)
 		_draw_health_bar(position + Vector2(-15, _dock_height(dock_id) + 15.0), 30.0, float(dock.get("health", 0.0)) / maxf(float(data.get("health", 1.0)), 1.0), Color("#8ee2f7"))
 
@@ -2538,6 +2574,8 @@ func _draw_enemies() -> void:
 		_draw_health_bar(position + Vector2(-10.0, body_top - 6.0), 20.0, float(enemy.get("health", 0.0)) / maxf(float(data.get("health", 1.0)), 1.0), Color("#e5a4a4"))
 		if bool(enemy.get("loot_carrier", false)):
 			draw_arc(position + Vector2(0.0, body_top - 6.0), 13.0, 0.0, TAU, 16, Color("#f4d75a"), 1.2)
+		if bool(enemy.get("raider", false)) and interface_font != null:
+			draw_string(interface_font, position + Vector2(-4.0, body_top - 11.0), "!", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 10, Color("#ff8b65"))
 
 func _enemy_animation_offset(enemy: Dictionary) -> Vector2:
 	var counter := float(enemy.get("counter", 0))
@@ -2760,6 +2798,8 @@ func _update_hud() -> void:
 					"nurse": nurses += 1
 					"carpenter": carpenters += 1
 			hud_labels["workers"].text = "F:%d  N:%d  C:%d" % [fighters, nurses, carpenters]
+		if hud_labels.has("modifier"):
+			hud_labels["modifier"].text = str(WAVE_MODIFIERS.get(active_wave_modifier, {}).get("title", ""))
 		if hud_health_fill != null:
 			hud_health_fill.size.x = 148.0 * clampf(float(health) / float(GameData.PLAYER_MAX_HEALTH), 0.0, 1.0)
 	if status_label != null:

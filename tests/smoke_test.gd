@@ -527,6 +527,20 @@ func _run() -> void:
 	var upgraded_site := {"upgrade_level": 2}
 	_expect(game._building_max_health(upgraded_site, shack_data) == float(shack_data.get("finished_health", 0)) * 2.0, "Level-two buildings should have double their base durability.")
 
+	# Enhanced modes rotate readable wave modifiers while the faithful campaign
+	# remains source-compatible and unmodified.
+	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT, game.DIFFICULTY_NORMAL)
+	game.wave = 2
+	game._set_wave_modifier()
+	_expect(game.active_wave_modifier == "swarm", "Enhanced wave two should activate the Swarm modifier.")
+	game.wave = 3
+	game._set_wave_modifier()
+	_expect(game.active_wave_modifier == "armored", "Enhanced wave three should activate the Armored modifier.")
+	game._start_stage(1, game.GAME_MODE_FAITHFUL, game.DIFFICULTY_NORMAL)
+	game.wave = 3
+	game._set_wave_modifier()
+	_expect(game.active_wave_modifier.is_empty(), "Faithful campaign waves must not receive enhanced modifiers.")
+
 	# Enemy visuals use the original parent wrapper frames at their native scale,
 	# not the old hand-authored 24/42/48px substitute rectangles.
 	_expect_vector_close(game._enemy_render_size("green_centipede"), Vector2(69.0, 161.0), "Green Centipede should retain its original native body dimensions.")
