@@ -450,7 +450,10 @@ func _run() -> void:
 	game._update_bullets()
 	game._update_enemies()
 	var expected_kill_score := 2 + int(small_green.get("worth", 0)) * 4
-	_expect(game.coins.size() == int(small_green.get("worth", 0)) and game.score == expected_kill_score, "Each of the two hits should award +1, and the Small Green death should add worth * 4 and drop worth coins.")
+	var dropped_coin_value := 0
+	for dropped_coin in game.coins:
+		dropped_coin_value += int(dropped_coin.get("value", 1))
+	_expect(dropped_coin_value == int(small_green.get("worth", 0)) and game.score == expected_kill_score, "Each of the two hits should award +1, and the Small Green death should add worth * 4 as persistent coin-stack value.")
 
 	# Flash bullets ignore ordinary islands, but collide against the full EnemyDock
 	# clip.  A shot near a wide dock's edge used to miss because the recreation
@@ -515,6 +518,14 @@ func _run() -> void:
 		var float_alpha := float(game.float_texts[0].get("alpha", 1.0))
 		game._update_float_texts()
 		_expect(float(game.float_texts[0].get("pos", Vector2.ZERO).y) < float_y and float(game.float_texts[0].get("alpha", 1.0)) < float_alpha, "Coin $1 feedback should rise and fade each source-compatible tick.")
+	# Enhanced progression keeps coincident rewards as one visible, persistent stack.
+	game.coins.clear()
+	game._create_coin(Vector2(190.0, 220.0), 2)
+	game._create_coin(Vector2(190.0, 220.0), 5)
+	_expect(game.coins.size() == 1 and int(game.coins[0].get("value", 0)) == 7, "Coin rewards at the same location should merge into one seven-coin stack.")
+	var shack_data: Dictionary = GameData.get_building("small_shack")
+	var upgraded_site := {"upgrade_level": 2}
+	_expect(game._building_max_health(upgraded_site, shack_data) == float(shack_data.get("finished_health", 0)) * 2.0, "Level-two buildings should have double their base durability.")
 
 	# Enemy visuals use the original parent wrapper frames at their native scale,
 	# not the old hand-authored 24/42/48px substitute rectangles.

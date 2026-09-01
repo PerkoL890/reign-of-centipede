@@ -519,6 +519,7 @@ func _build_hud() -> void:
 	_add_hud_value("money", Vector2(219, 10), Vector2(95, 27), 18, HORIZONTAL_ALIGNMENT_RIGHT, hud_number_font)
 	_add_hud_value("wave", Vector2(371, 10), Vector2(44, 27), 18, HORIZONTAL_ALIGNMENT_RIGHT, hud_number_font)
 	_add_hud_value("score", Vector2(432, 10), Vector2(95, 27), 18, HORIZONTAL_ALIGNMENT_RIGHT, hud_number_font)
+	_add_hud_value("workers", Vector2(7, 42), Vector2(190, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
 	# The original artwork exposes a weapons button at the upper right. Keep the
 	# source click target without replacing it with a modern-looking control.
 	var weapons_button := Button.new()
@@ -625,8 +626,12 @@ func _open_build_menu_nearby() -> void:
 		_set_status("Stand beside a rubble site to open the building menu.")
 		return
 	var site: Dictionary = buildings[site_index]
-	if site.get("state", "rubble") != "rubble" or bool(site.get("constructing", false)):
-		_set_status("This site is already being built or occupied.")
+	if site.get("state", "rubble") == "complete":
+		building_menu_site_index = site_index
+		_show_building_manage_menu()
+		return
+	if bool(site.get("constructing", false)):
+		_set_status("This site is already under construction.")
 		return
 	building_menu_site_index = site_index
 	_show_build_menu()
@@ -648,6 +653,72 @@ func _show_build_menu() -> void:
 		var caption := "%s  $%d\n%s" % [data.get("display_name", building_id), int(data.get("cost", 0)), data.get("role", "")]
 		_add_button(caption, Vector2(60 + column * 270, 120 + row * 58), Vector2(250, 50), _select_building.bind(building_id), 11)
 	_add_button("CLOSE", Vector2(235, 385), Vector2(180, 31), _close_building_menu, 13)
+
+func _show_building_manage_menu() -> void:
+	if mode != MODE_PLAY or building_menu_site_index < 0 or building_menu_site_index >= buildings.size():
+		return
+	paused = true
+	_clear_ui()
+	_add_full_screen_panel(Color(0.02, 0.08, 0.13, 0.94))
+	var site: Dictionary = buildings[building_menu_site_index]
+	var data: Dictionary = GameData.get_building(str(site.get("id", "")))
+	var level := int(site.get("upgrade_level", 0))
+	_add_title("BUILDING OPTIONS", Vector2(112, 72), Vector2(426, 35), 24, Color("#e7f7d2"))
+	_add_label("%s  •  Upgrade level %d/2" % [data.get("display_name", "Building"), level], Vector2(65, 133), Vector2(510, 25), 14, Color("#c9e7cf"), HORIZONTAL_ALIGNMENT_CENTER)
+	if level < 2:
+		var upgrade_cost := _building_upgrade_cost(data, level)
+		_add_button("UPGRADE  $%d\nStronger building, faster defenders" % upgrade_cost, Vector2(155, 190), Vector2(330, 52), _upgrade_selected_building, 12)
+	else:
+		_add_label("Maximum upgrade reached.", Vector2(155, 194), Vector2(330, 38), 13, Color("#e8d978"), HORIZONTAL_ALIGNMENT_CENTER)
+	var refund := int(data.get("cost", 0) * 0.5)
+	_add_button("DISMANTLE  +$%d\nReturn this site to rubble" % refund, Vector2(155, 258), Vector2(330, 52), _dismantle_selected_building, 12)
+	_add_button("CLOSE", Vector2(235, 345), Vector2(180, 34), _close_building_menu, 13)
+
+func _building_upgrade_cost(data: Dictionary, level: int) -> int:
+	return int(round(float(data.get("cost", 0)) * (0.55 + float(level) * 0.25)))
+
+func _building_max_health(site: Dictionary, data: Dictionary) -> float:
+	return float(data.get("finished_health", 1)) * (1.0 + float(site.get("upgrade_level", 0)) * 0.5)
+
+func _upgrade_selected_building() -> void:
+	if building_menu_site_index < 0 or building_menu_site_index >= buildings.size():
+		return
+	var site: Dictionary = buildings[building_menu_site_index]
+	var data: Dictionary = GameData.get_building(str(site.get("id", "")))
+	var level := int(site.get("upgrade_level", 0))
+	if level >= 2:
+		_show_building_manage_menu()
+		return
+	var cost := _building_upgrade_cost(data, level)
+	if not infinite_money_cheat and money < cost:
+		_set_status("Not enough money to upgrade %s." % data.get("display_name", "this building"))
+		_show_building_manage_menu()
+		return
+	if not infinite_money_cheat:
+		money -= cost
+	site["upgrade_level"] = level + 1
+	site["health"] = minf(_building_max_health(site, data), float(site.get("health", 0.0)) + float(data.get("finished_health", 1)) * 0.5)
+	buildings[building_menu_site_index] = site
+	_set_status("%s upgraded to level %d." % [data.get("display_name", "Building"), level + 1])
+	_show_building_manage_menu()
+
+func _dismantle_selected_building() -> void:
+	if building_menu_site_index < 0 or building_menu_site_index >= buildings.size():
+		return
+	var site: Dictionary = buildings[building_menu_site_index]
+	var data: Dictionary = GameData.get_building(str(site.get("id", "")))
+	var refund := int(data.get("cost", 0) * 0.5)
+	money += refund
+	var site_position: Vector2 = site.get("pos", Vector2.ZERO)
+	for index in range(friendlies.size() - 1, -1, -1):
+		if friendlies[index].get("home_pos", Vector2.ZERO).distance_to(site_position) < 34.0:
+			friendlies.remove_at(index)
+	_destroy_building(site)
+	buildings[building_menu_site_index] = site
+	building_menu_site_index = -1
+	paused = false
+	_set_status("Building dismantled. Refunded $%d." % refund)
+	_build_hud()
 
 func _select_building(building_id: String) -> void:
 	if building_menu_site_index < 0 or building_menu_site_index >= buildings.size():
@@ -1107,14 +1178,15 @@ func _build_or_repair() -> void:
 		buildings[site_index] = site
 	elif site.get("state") == "complete":
 		var building_data: Dictionary = GameData.get_building(str(site.get("id", "")))
-		site["health"] = minf(float(building_data.get("finished_health", 1)), float(site.get("health", 0.0)) + 1.0)
+		site["health"] = minf(_building_max_health(site, building_data), float(site.get("health", 0.0)) + 1.0)
 		buildings[site_index] = site
 
 func _complete_building(site: Dictionary) -> void:
 	var data: Dictionary = GameData.get_building(str(site.get("id", "")))
 	site["state"] = "complete"
 	site["constructing"] = false
-	site["health"] = float(data.get("finished_health", 1))
+	site["upgrade_level"] = int(site.get("upgrade_level", 0))
+	site["health"] = _building_max_health(site, data)
 	# Building.setBuildingProperties seeds the spawn cadence from random 0..99.
 	site["spawn_counter"] = random.randi_range(0, 99)
 	_set_status("%s complete." % data.get("display_name", site.get("id", "building")))
@@ -1172,6 +1244,7 @@ func _create_build_sites(stage: Dictionary) -> void:
 			"constructing": false,
 			"build_health": 0.0,
 			"build_total": 0.0,
+			"upgrade_level": 0,
 			"spawn_counter": 0,
 			"effect_counter": random.randi_range(0, 99),
 		})
@@ -1257,11 +1330,12 @@ func _update_buildings() -> void:
 			continue
 		var data: Dictionary = GameData.get_building(str(site.get("id", "")))
 		site["spawn_counter"] = int(site.get("spawn_counter", 0)) + 1
-		var spawn_interval := int(data.get("spawn_interval_ticks", 99_999))
+		var upgrade_level := int(site.get("upgrade_level", 0))
+		var spawn_interval := int(round(float(data.get("spawn_interval_ticks", 99_999)) / (1.0 + float(upgrade_level) * 0.35)))
 		if fast_npc_spawn_cheat:
 			spawn_interval = maxi(10, spawn_interval / 5)
 		if int(site.get("spawn_counter", 0)) % spawn_interval == 0 and friendlies.size() < GameData.MAX_FRIENDLIES:
-			_create_friendly(site.get("pos", Vector2.ZERO) + Vector2(15, -5), data)
+			_create_friendly(site.get("pos", Vector2.ZERO) + Vector2(15, -5), data, upgrade_level)
 		buildings[index] = site
 
 func _destroy_building(site: Dictionary) -> void:
@@ -1272,10 +1346,11 @@ func _destroy_building(site: Dictionary) -> void:
 	site["build_health"] = 0.0
 	site["build_total"] = 0.0
 	site["spawn_counter"] = 0
+	site["upgrade_level"] = 0
 	_set_status("A building was destroyed and returned to rubble.")
 	_play_sound("explosion")
 
-func _create_friendly(position: Vector2, building_data: Dictionary) -> void:
+func _create_friendly(position: Vector2, building_data: Dictionary, upgrade_level: int = 0) -> void:
 	var home_surface := _friendly_home_surface(position)
 	if home_surface.has_area():
 		# A defender belongs to the grass platform carrying its building, rather
@@ -1287,7 +1362,9 @@ func _create_friendly(position: Vector2, building_data: Dictionary) -> void:
 		"pos": position,
 		"home_pos": position,
 		"home_surface": home_surface,
-		"health": float(GameData.FRIENDLY_TOTAL_HEALTH),
+		"health": float(GameData.FRIENDLY_TOTAL_HEALTH) * (1.0 + float(upgrade_level) * 0.25),
+		"max_health": float(GameData.FRIENDLY_TOTAL_HEALTH) * (1.0 + float(upgrade_level) * 0.25),
+		"upgrade_level": upgrade_level,
 		"counter": 0,
 		"role": str(building_data.get("role", "fighter")),
 		"kind": str(building_data.get("friendly_kind", "old_man")),
@@ -1337,7 +1414,8 @@ func _update_fighter(friendly: Dictionary) -> void:
 	var weapon: Dictionary = GameData.get_weapon(str(friendly.get("weapon", "pistol")))
 	if int(friendly.get("counter", 0)) % int(weapon.get("s_rate", 8)) == 0:
 		var weapon_pose := _friendly_weapon_pose(friendly)
-		_create_bullet(weapon_pose.get("muzzle_position", position + Vector2(0, -12)), aim * GameData.BULLET_SPEED, int(weapon.get("power", 2)), "friendly", str(friendly.get("weapon", "pistol")))
+		var power := int(round(float(weapon.get("power", 2)) * (1.0 + float(friendly.get("upgrade_level", 0)) * 0.2)))
+		_create_bullet(weapon_pose.get("muzzle_position", position + Vector2(0, -12)), aim * GameData.BULLET_SPEED, power, "friendly", str(friendly.get("weapon", "pistol")))
 		friendly["muzzle_flash_ticks"] = 4
 
 func _update_carpenter(friendly: Dictionary) -> void:
@@ -1503,6 +1581,7 @@ func _create_enemy(enemy_id: String, position: Vector2) -> void:
 		"shoot_target": -1,
 		"has_shot": false,
 		"fall_velocity": 0.0,
+		"loot_carrier": game_mode != GAME_MODE_FAITHFUL and random.randf() < minf(0.07, 0.018 + float(wave) * 0.001),
 	})
 
 func _update_enemies() -> void:
@@ -1700,6 +1779,10 @@ func _kill_enemy(index: int) -> void:
 	var position: Vector2 = enemy.get("pos", Vector2.ZERO)
 	for count in range(int(data.get("worth", 1))):
 		_create_coin(position + Vector2(random.randf_range(-8.0, 8.0), random.randf_range(-8.0, 8.0)))
+	if bool(enemy.get("loot_carrier", false)):
+		_create_box(position)
+		boxes.back()["reward_multiplier"] = 2
+		_create_float_text("LOOT CARRIER", position + Vector2(-20.0, -26.0))
 	score += int(data.get("worth", 1)) * 4
 	enemies.remove_at(index)
 	_play_sound("explosion")
@@ -1998,11 +2081,20 @@ func _update_lasers() -> void:
 		else:
 			lasers[index] = laser
 
-func _create_coin(position: Vector2) -> void:
+func _create_coin(position: Vector2, value: int = 1) -> void:
+	# Coin stacks preserve every reward without creating an unbounded number of
+	# live pickup nodes when crates or elites drop large amounts.
+	for index in range(coins.size()):
+		var existing: Dictionary = coins[index]
+		if existing.get("pos", Vector2.ZERO).distance_to(position) < 24.0:
+			existing["value"] = int(existing.get("value", 1)) + value
+			coins[index] = existing
+			return
 	coins.append({
 		"pos": position,
 		"vel": Vector2(random.randf_range(0.0, 6.0) * (-1.0 if random.randf() < 0.5 else 1.0), -random.randf_range(5.0, 15.0)),
 		"counter": 0,
+		"value": value,
 	})
 
 func _create_heart(position: Vector2) -> void:
@@ -2020,6 +2112,7 @@ func _create_box(position: Vector2, floating: bool = false, balloon_id: int = -1
 		"counter": 0,
 		"floating": floating,
 		"balloon_id": balloon_id,
+		"reward_multiplier": 1,
 	})
 
 func _create_balloon(anchor: Vector2, with_box: bool) -> void:
@@ -2057,14 +2150,15 @@ func _update_pickups() -> void:
 		coin["pos"] = position
 		coin["vel"] = velocity
 		if position.distance_to(player.get("pos", Vector2.ZERO)) < 20.0:
-			money += 1
-			score += 2
+			var value := int(coin.get("value", 1))
+			money += value
+			score += value * 2
 			# Flash onCoin gives money feedback as a small $1 bitmap that rises and
 			# fades at the collected coin's post-gravity position.
-			_create_float_text("$1", position, true)
+			_create_float_text("$%d" % value, position, true)
 			coins.remove_at(index)
 			_play_sound("coin")
-		elif _map_to_source_pixels(position).y > GameData.COIN_DESPAWN_Y or int(coin.get("counter", 0)) > GameData.COIN_LIFETIME_TICKS:
+		elif _map_to_source_pixels(position).y > GameData.COIN_DESPAWN_Y:
 			coins.remove_at(index)
 		else:
 			coins[index] = coin
@@ -2115,10 +2209,11 @@ func _update_boxes_and_balloons() -> void:
 		box["counter"] = int(box.get("counter", 0)) + 1
 		if float(box.get("health", 0.0)) <= 0.0:
 			var position: Vector2 = box.get("pos", Vector2.ZERO)
+			var reward_multiplier := int(box.get("reward_multiplier", 1))
 			if random.randf() < GameData.CRATE_COIN_DROP_CHANCE:
-				for coin_index in range(random.randi_range(GameData.CRATE_MIN_COINS, GameData.CRATE_MAX_COINS)):
+				for coin_index in range(random.randi_range(GameData.CRATE_MIN_COINS, GameData.CRATE_MAX_COINS) * reward_multiplier):
 					_create_coin(position)
-				for heart_index in range(random.randi_range(GameData.CRATE_MIN_HEARTS, GameData.CRATE_MAX_HEARTS)):
+				for heart_index in range(random.randi_range(GameData.CRATE_MIN_HEARTS, GameData.CRATE_MAX_HEARTS) * reward_multiplier):
 					_create_heart(position)
 			score += GameData.CRATE_SCORE
 			boxes.remove_at(index)
@@ -2337,7 +2432,10 @@ func _draw_buildings() -> void:
 			_draw_health_bar(position + Vector2(-25, -58), 50.0, completion, Color("#d4ee77"))
 		elif state == "complete":
 			var data: Dictionary = GameData.get_building(art_id)
-			_draw_health_bar(position + Vector2(-25, -58), 50.0, float(site.get("health", 0.0)) / maxf(float(data.get("finished_health", 1.0)), 1.0), Color("#89e8a6"))
+			_draw_health_bar(position + Vector2(-25, -58), 50.0, float(site.get("health", 0.0)) / maxf(_building_max_health(site, data), 1.0), Color("#89e8a6"))
+			var level := int(site.get("upgrade_level", 0))
+			if level > 0 and interface_font != null:
+				draw_string(interface_font, position + Vector2(-12.0, -65.0), "LV%d" % level, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 8, Color("#f4e978"))
 		if selected_building != "" and state == "rubble" and player.get("pos", Vector2.ZERO).distance_to(position) < 40.0:
 			draw_arc(position, 26.0, 0.0, TAU, 24, Color("#f3f8c8"), 1.5)
 
@@ -2438,6 +2536,8 @@ func _draw_enemies() -> void:
 		# GiveHealthBar.to(enemy, 20, 4, ...) is a constant 20px source bar,
 		# located just above each native body rather than stretched to its width.
 		_draw_health_bar(position + Vector2(-10.0, body_top - 6.0), 20.0, float(enemy.get("health", 0.0)) / maxf(float(data.get("health", 1.0)), 1.0), Color("#e5a4a4"))
+		if bool(enemy.get("loot_carrier", false)):
+			draw_arc(position + Vector2(0.0, body_top - 6.0), 13.0, 0.0, TAU, 16, Color("#f4d75a"), 1.2)
 
 func _enemy_animation_offset(enemy: Dictionary) -> Vector2:
 	var counter := float(enemy.get("counter", 0))
@@ -2538,7 +2638,12 @@ func _draw_lasers() -> void:
 
 func _draw_pickups() -> void:
 	for coin in coins:
-		_draw_pickup_texture("coin_1", coin.get("pos", Vector2.ZERO), Vector2(6, 6), Color("#ffd94f"))
+		var position: Vector2 = coin.get("pos", Vector2.ZERO)
+		var value := int(coin.get("value", 1))
+		for stack_index in range(mini(3, value)):
+			_draw_pickup_texture("coin_1", position + Vector2(float(stack_index) * 2.0 - 2.0, -float(stack_index)), Vector2(6, 6), Color("#ffd94f"))
+		if value > 1 and interface_font != null:
+			draw_string(interface_font, position + Vector2(5.0, -5.0), "x%d" % value, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 8, Color("#fff0a1"))
 	for heart in hearts:
 		_draw_pickup_texture("heart", heart.get("pos", Vector2.ZERO), Vector2(9, 7), Color("#fa6884"))
 
@@ -2645,6 +2750,16 @@ func _update_hud() -> void:
 		hud_labels["money"].text = "$%d" % money
 		hud_labels["wave"].text = str(wave)
 		hud_labels["score"].text = str(score)
+		if hud_labels.has("workers"):
+			var fighters := 0
+			var nurses := 0
+			var carpenters := 0
+			for friendly in friendlies:
+				match str(friendly.get("role", "fighter")):
+					"fighter": fighters += 1
+					"nurse": nurses += 1
+					"carpenter": carpenters += 1
+			hud_labels["workers"].text = "F:%d  N:%d  C:%d" % [fighters, nurses, carpenters]
 		if hud_health_fill != null:
 			hud_health_fill.size.x = 148.0 * clampf(float(health) / float(GameData.PLAYER_MAX_HEALTH), 0.0, 1.0)
 	if status_label != null:
