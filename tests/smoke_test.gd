@@ -541,6 +541,17 @@ func _run() -> void:
 	game._set_wave_modifier()
 	_expect(game.active_wave_modifier.is_empty(), "Faithful campaign waves must not receive enhanced modifiers.")
 
+	# The enhanced salvage pulse pulls rewards and briefly freezes nearby threats.
+	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT, game.DIFFICULTY_NORMAL)
+	var pulse_origin: Vector2 = game.player.get("pos", Vector2.ZERO)
+	game.coins.clear()
+	game.enemies.clear()
+	game._create_coin(pulse_origin + Vector2(80.0, 0.0))
+	game._create_enemy("small_green", pulse_origin + Vector2(40.0, 0.0))
+	game._activate_salvage_pulse()
+	_expect(game.ability_cooldown_ticks == 300 and game.ability_pulse_ticks == 20, "Salvage pulse should begin its visual pulse and cooldown together.")
+	_expect(float(game.coins[0].get("vel", Vector2.ZERO).x) < 0.0 and int(game.enemies[0].get("stun_ticks", 0)) == 75, "Salvage pulse should magnetize coins and stun nearby enemies.")
+
 	# Enemy visuals use the original parent wrapper frames at their native scale,
 	# not the old hand-authored 24/42/48px substitute rectangles.
 	_expect_vector_close(game._enemy_render_size("green_centipede"), Vector2(69.0, 161.0), "Green Centipede should retain its original native body dimensions.")

@@ -176,6 +176,11 @@ var bullets: Array = []
 var lasers: Array = []
 var coins: Array = []
 var hearts: Array = []
+var weapon_pickups: Array = []
+var temporary_weapon_id := ""
+var temporary_weapon_ticks := 0
+var ability_cooldown_ticks := 0
+var ability_pulse_ticks := 0
 var boxes: Array = []
 var balloons: Array = []
 var float_texts: Array = []
@@ -261,6 +266,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_open_build_menu_nearby()
 		elif event.keycode == KEY_E:
 			_show_weapon_menu()
+		elif event.keycode == KEY_Q:
+			_activate_salvage_pulse()
 		elif event.keycode == KEY_ESCAPE:
 			_show_pause_menu()
 
@@ -437,6 +444,11 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	lasers.clear()
 	coins.clear()
 	hearts.clear()
+	weapon_pickups.clear()
+	temporary_weapon_id = ""
+	temporary_weapon_ticks = 0
+	ability_cooldown_ticks = 0
+	ability_pulse_ticks = 0
 	boxes.clear()
 	balloons.clear()
 	float_texts.clear()
@@ -529,6 +541,7 @@ func _build_hud() -> void:
 	_add_hud_value("score", Vector2(432, 10), Vector2(95, 27), 18, HORIZONTAL_ALIGNMENT_RIGHT, hud_number_font)
 	_add_hud_value("workers", Vector2(7, 42), Vector2(190, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
 	_add_hud_value("modifier", Vector2(7, 56), Vector2(230, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
+	_add_hud_value("ability", Vector2(7, 70), Vector2(230, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
 	# The original artwork exposes a weapons button at the upper right. Keep the
 	# source click target without replacing it with a modern-looking control.
 	var weapons_button := Button.new()
@@ -985,6 +998,14 @@ func _update_player() -> void:
 		return
 	player["muzzle_flash_ticks"] = maxi(0, int(player.get("muzzle_flash_ticks", 0)) - 1)
 	player["hurt_flash_ticks"] = maxi(0, int(player.get("hurt_flash_ticks", 0)) - 1)
+	ability_cooldown_ticks = maxi(0, ability_cooldown_ticks - 1)
+	ability_pulse_ticks = maxi(0, ability_pulse_ticks - 1)
+	if temporary_weapon_ticks > 0:
+		temporary_weapon_ticks -= 1
+		if temporary_weapon_ticks == 0 and equipped_weapon == temporary_weapon_id:
+			equipped_weapon = "pistol"
+			temporary_weapon_id = ""
+			_set_status("Field weapon expired; pistol re-equipped.")
 	var velocity: Vector2 = player.get("vel", Vector2.ZERO)
 	var moving := false
 	var jump_key_down := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)
@@ -1103,6 +1124,31 @@ func _try_fire_player(moving: bool) -> void:
 	shoot_counter = 0
 	player["muzzle_flash_ticks"] = 4
 	_play_sound(_weapon_sound(equipped_weapon))
+
+func _activate_salvage_pulse() -> void:
+	if ability_cooldown_ticks > 0:
+		_set_status("Salvage pulse recharging: %ds" % int(ceil(float(ability_cooldown_ticks) / 30.0)))
+		return
+	ability_cooldown_ticks = 300
+	ability_pulse_ticks = 20
+	var player_position: Vector2 = player.get("pos", Vector2.ZERO)
+	for index in range(coins.size()):
+		var coin: Dictionary = coins[index]
+		var direction: Vector2 = player_position - coin.get("pos", player_position)
+		coin["vel"] = direction.normalized() * 9.0 if direction.length_squared() > 0.01 else Vector2.ZERO
+		coins[index] = coin
+	for index in range(hearts.size()):
+		var heart: Dictionary = hearts[index]
+		var direction: Vector2 = player_position - heart.get("pos", player_position)
+		heart["vel"] = direction.normalized() * 7.0 if direction.length_squared() > 0.01 else Vector2.ZERO
+		hearts[index] = heart
+	for index in range(enemies.size()):
+		var enemy: Dictionary = enemies[index]
+		if enemy.get("pos", player_position).distance_to(player_position) <= 90.0:
+			enemy["stun_ticks"] = 75
+			enemies[index] = enemy
+	_create_float_text("SALVAGE PULSE", player_position + Vector2(-26.0, -30.0))
+	_play_sound("pickup")
 
 func _player_bullet_spread_degrees(moving: bool, airborne: bool) -> float:
 	if airborne:
@@ -1621,6 +1667,10 @@ func _update_enemies() -> void:
 				enemy["health"] = float(enemy.get("health", 0.0)) - float(enemy.get("burn_stacks", 0)) * 2.5
 		elif int(enemy.get("burn_stacks", 0)) > 0:
 			enemy["burn_stacks"] = 0
+		if int(enemy.get("stun_ticks", 0)) > 0:
+			enemy["stun_ticks"] = int(enemy.get("stun_ticks", 0)) - 1
+			enemies[index] = enemy
+			continue
 		enemy["move_counter"] = int(enemy.get("move_counter", 0)) + 1
 		if int(enemy.get("counter", 0)) > 300 and random.randi_range(1, 7000) == 1:
 			enemy["targets_objects"] = true
@@ -2139,6 +2189,11 @@ func _create_heart(position: Vector2) -> void:
 		"counter": 0,
 	})
 
+func _create_weapon_pickup(position: Vector2) -> void:
+	var candidates := ["shotgun", "ump", "flamer", "bazooka"]
+	var weapon_id: String = candidates[random.randi_range(0, candidates.size() - 1)]
+	weapon_pickups.append({"pos": position, "weapon_id": weapon_id, "counter": 0})
+
 func _create_box(position: Vector2, floating: bool = false, balloon_id: int = -1) -> void:
 	boxes.append({
 		"pos": position,
@@ -2219,6 +2274,21 @@ func _update_pickups() -> void:
 			hearts.remove_at(index)
 		else:
 			hearts[index] = heart
+	for index in range(weapon_pickups.size() - 1, -1, -1):
+		var pickup: Dictionary = weapon_pickups[index]
+		pickup["counter"] = int(pickup.get("counter", 0)) + 1
+		var pickup_position: Vector2 = pickup.get("pos", Vector2.ZERO)
+		if pickup_position.distance_to(player.get("pos", Vector2.ZERO)) < 22.0:
+			temporary_weapon_id = str(pickup.get("weapon_id", "shotgun"))
+			temporary_weapon_ticks = 600
+			equipped_weapon = temporary_weapon_id
+			_create_float_text("%s FIELD DROP" % temporary_weapon_id.to_upper(), pickup_position + Vector2(-22.0, -12.0))
+			weapon_pickups.remove_at(index)
+			_play_sound("pickup")
+		elif int(pickup.get("counter", 0)) > 900:
+			weapon_pickups.remove_at(index)
+		else:
+			weapon_pickups[index] = pickup
 
 func _create_float_text(text: String, position: Vector2, money_text: bool = false) -> void:
 	float_texts.append({
@@ -2250,6 +2320,8 @@ func _update_boxes_and_balloons() -> void:
 					_create_coin(position)
 				for heart_index in range(random.randi_range(GameData.CRATE_MIN_HEARTS, GameData.CRATE_MAX_HEARTS) * reward_multiplier):
 					_create_heart(position)
+			if game_mode != GAME_MODE_FAITHFUL and random.randf() < 0.18:
+				_create_weapon_pickup(position + Vector2(0.0, -12.0))
 			score += GameData.CRATE_SCORE
 			boxes.remove_at(index)
 			_play_sound("box")
@@ -2535,6 +2607,9 @@ func _draw_player() -> void:
 	if interface_font != null:
 		draw_string(interface_font, position + Vector2(-10.0, -20.0), "YOU", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 8, Color("#eefad7"))
 	_draw_health_bar(position + Vector2(-17, -PLAYER_COLLISION_HALF_HEIGHT - 10), 34.0, float(player.get("health", 0.0)) / GameData.PLAYER_MAX_HEALTH, Color("#8eea8f"))
+	if ability_pulse_ticks > 0:
+		var radius := 90.0 * (1.0 - float(ability_pulse_ticks) / 25.0)
+		draw_arc(position, maxf(radius, 8.0), 0.0, TAU, 30, Color(0.45, 0.92, 1.0, float(ability_pulse_ticks) / 24.0), 1.4)
 
 func _player_body_texture() -> Texture2D:
 	var path := "res://assets/original/player/body_standing.png"
@@ -2684,6 +2759,12 @@ func _draw_pickups() -> void:
 			draw_string(interface_font, position + Vector2(5.0, -5.0), "x%d" % value, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 8, Color("#fff0a1"))
 	for heart in hearts:
 		_draw_pickup_texture("heart", heart.get("pos", Vector2.ZERO), Vector2(9, 7), Color("#fa6884"))
+	for pickup in weapon_pickups:
+		var pickup_position: Vector2 = pickup.get("pos", Vector2.ZERO)
+		draw_rect(Rect2(pickup_position - Vector2(9.0, 9.0), Vector2(18.0, 18.0)), Color("#2c6382"))
+		draw_rect(Rect2(pickup_position - Vector2(9.0, 9.0), Vector2(18.0, 18.0)), Color("#a7e3f2"), false, 1.0)
+		if interface_font != null:
+			draw_string(interface_font, pickup_position + Vector2(-6.0, 3.0), str(pickup.get("weapon_id", "?")).left(3).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 7, Color.WHITE)
 
 func _draw_float_texts() -> void:
 	if interface_font == null:
@@ -2800,6 +2881,8 @@ func _update_hud() -> void:
 			hud_labels["workers"].text = "F:%d  N:%d  C:%d" % [fighters, nurses, carpenters]
 		if hud_labels.has("modifier"):
 			hud_labels["modifier"].text = str(WAVE_MODIFIERS.get(active_wave_modifier, {}).get("title", ""))
+		if hud_labels.has("ability"):
+			hud_labels["ability"].text = "Q: SALVAGE PULSE %s" % ("READY" if ability_cooldown_ticks == 0 else "%ds" % int(ceil(float(ability_cooldown_ticks) / 30.0)))
 		if hud_health_fill != null:
 			hud_health_fill.size.x = 148.0 * clampf(float(health) / float(GameData.PLAYER_MAX_HEALTH), 0.0, 1.0)
 	if status_label != null:
