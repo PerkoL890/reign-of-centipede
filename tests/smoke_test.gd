@@ -596,6 +596,15 @@ func _run() -> void:
 	game._select_building("small_shack")
 	_expect(game.buildings[0].get("state", "rubble") == "complete", "Sandbox building selections should complete instantly.")
 
+	# Nurse NPC healing prefers the most injured friendly in range and respects
+	# upgraded-friendly maximum health.
+	game.friendlies = [
+		{"pos": Vector2(120.0, 200.0), "health": 10.0, "max_health": 10.0, "role": "nurse"},
+		{"pos": Vector2(150.0, 200.0), "health": 2.0, "max_health": 15.0, "role": "fighter"},
+	]
+	game._heal_nearby_friendly(game.friendlies[0])
+	_expect(float(game.friendlies[1].get("health", 0.0)) == 5.0 and int(game.friendlies[1].get("heal_flash_ticks", 0)) > 0, "Nurses should heal nearby injured NPCs and show a heal flash.")
+
 	# Enemy visuals use the original parent wrapper frames at their native scale,
 	# not the old hand-authored 24/42/48px substitute rectangles.
 	_expect_vector_close(game._enemy_render_size("green_centipede"), Vector2(69.0, 161.0), "Green Centipede should retain its original native body dimensions.")

@@ -334,6 +334,9 @@ const FRIENDLY_RANGE: float = 350.0
 const CARPENTER_BUILD_HEALTH: int = 7
 const CARPENTER_BUILD_INTERVAL_TICKS: int = 9
 const NURSE_HEART_INTERVAL_TICKS: int = 300
+const NURSE_NPC_HEAL_INTERVAL_TICKS: int = 90
+const NURSE_NPC_HEAL_RANGE: float = 115.0
+const NURSE_NPC_HEAL_AMOUNT: float = 3.0
 # Source-compatible: nurse creates a pickup; it does not cast a healing beam.
 const NURSE_USES_HEART_PICKUP: bool = true
 

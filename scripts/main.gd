@@ -1519,6 +1519,7 @@ func _create_friendly(position: Vector2, building_data: Dictionary, upgrade_leve
 		"aim": Vector2.RIGHT,
 		"has_target": false,
 		"muzzle_flash_ticks": 0,
+		"heal_flash_ticks": 0,
 	})
 
 func _update_friendlies() -> void:
@@ -1530,6 +1531,7 @@ func _update_friendlies() -> void:
 		friendly["counter"] = int(friendly.get("counter", 0)) + 1
 		friendly["move_counter"] = int(friendly.get("move_counter", 0)) + 1
 		friendly["muzzle_flash_ticks"] = maxi(0, int(friendly.get("muzzle_flash_ticks", 0)) - 1)
+		friendly["heal_flash_ticks"] = maxi(0, int(friendly.get("heal_flash_ticks", 0)) - 1)
 		friendly["has_target"] = false
 		var role := str(friendly.get("role", "fighter"))
 		if role == "fighter":
@@ -1539,9 +1541,31 @@ func _update_friendlies() -> void:
 			_update_carpenter(friendly)
 		elif role == "nurse":
 			_wander_friendly(friendly)
+			if int(friendly.get("counter", 0)) % GameData.NURSE_NPC_HEAL_INTERVAL_TICKS == 0:
+				_heal_nearby_friendly(friendly)
 			if int(friendly.get("counter", 0)) % GameData.NURSE_HEART_INTERVAL_TICKS == 0:
 				_create_heart(friendly.get("pos", Vector2.ZERO))
 		friendlies[index] = friendly
+
+func _heal_nearby_friendly(nurse: Dictionary) -> void:
+	var nurse_position: Vector2 = nurse.get("pos", Vector2.ZERO)
+	var target_index := -1
+	var most_missing_health := 0.0
+	for index in range(friendlies.size()):
+		var target: Dictionary = friendlies[index]
+		var maximum_health := float(target.get("max_health", GameData.FRIENDLY_TOTAL_HEALTH))
+		var missing_health := maximum_health - float(target.get("health", 0.0))
+		if nurse_position.distance_to(target.get("pos", nurse_position)) <= GameData.NURSE_NPC_HEAL_RANGE and missing_health > most_missing_health:
+			target_index = index
+			most_missing_health = missing_health
+	if target_index < 0:
+		return
+	var healed: Dictionary = friendlies[target_index]
+	var maximum_health := float(healed.get("max_health", GameData.FRIENDLY_TOTAL_HEALTH))
+	healed["health"] = minf(maximum_health, float(healed.get("health", 0.0)) + GameData.NURSE_NPC_HEAL_AMOUNT)
+	healed["heal_flash_ticks"] = 12
+	friendlies[target_index] = healed
+	_create_float_text("+%d" % int(GameData.NURSE_NPC_HEAL_AMOUNT), healed.get("pos", Vector2.ZERO) + Vector2(-5.0, -24.0))
 
 func _update_fighter(friendly: Dictionary) -> void:
 	var enemy_index := _nearest_enemy_index(friendly.get("pos", Vector2.ZERO), GameData.FRIENDLY_RANGE)
@@ -2822,7 +2846,9 @@ func _draw_friendlies() -> void:
 			draw_set_transform(-camera_position)
 		else:
 			draw_circle(position, 8.0, Color("#ffe5a2"))
-		_draw_health_bar(position + Vector2(-10, -31), 20.0, float(friendly.get("health", 0.0)) / GameData.FRIENDLY_TOTAL_HEALTH, Color("#8eea8f"))
+		_draw_health_bar(position + Vector2(-10, -31), 20.0, float(friendly.get("health", 0.0)) / maxf(float(friendly.get("max_health", GameData.FRIENDLY_TOTAL_HEALTH)), 1.0), Color("#8eea8f"))
+		if int(friendly.get("heal_flash_ticks", 0)) > 0:
+			draw_arc(position + Vector2(0.0, -11.0), 14.0, 0.0, TAU, 16, Color("#9affb4"), 1.3)
 		if str(friendly.get("role", "fighter")) == "fighter":
 			_draw_friendly_weapon(friendly, position)
 
