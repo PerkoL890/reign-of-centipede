@@ -523,9 +523,10 @@ func _run() -> void:
 	game._create_coin(Vector2(190.0, 220.0), 2)
 	game._create_coin(Vector2(190.0, 220.0), 5)
 	_expect(game.coins.size() == 1 and int(game.coins[0].get("value", 0)) == 7, "Coin rewards at the same location should merge into one seven-coin stack.")
-	var shack_data: Dictionary = GameData.get_building("small_shack")
-	var upgraded_site := {"upgrade_level": 2}
-	_expect(game._building_max_health(upgraded_site, shack_data) == float(shack_data.get("finished_health", 0)) * 2.0, "Level-two buildings should have double their base durability.")
+	var tall_data: Dictionary = GameData.get_building("tall_building")
+	var upgraded_site := {"upgrade_level": 1}
+	_expect(game._building_upgrade_limit("small_shack") == 0 and game._building_upgrade_limit("tall_building") == 1, "Only the Tall Building should offer the final Level 2 upgrade.")
+	_expect(game._building_max_health(upgraded_site, tall_data) == float(tall_data.get("finished_health", 0)) * 1.5, "Tall Building Level 2 should have 50% extra durability.")
 
 	# Enhanced modes rotate readable wave modifiers while the faithful campaign
 	# remains source-compatible and unmodified.
@@ -595,6 +596,12 @@ func _run() -> void:
 	game.building_menu_site_index = 0
 	game._select_building("small_shack")
 	_expect(game.buildings[0].get("state", "rubble") == "complete", "Sandbox building selections should complete instantly.")
+	game.building_menu_site_index = 1
+	game._select_building("tall_building")
+	_expect(int(game.buildings[1].get("upgrade_level", -1)) == 0, "A directly built Tall Building should start at Level 1.")
+	game.building_menu_site_index = 1
+	game._upgrade_selected_building()
+	_expect(int(game.buildings[1].get("upgrade_level", 0)) == 1, "Tall Building Level 1 should be upgradeable to Level 2.")
 
 	# Nurse NPC healing prefers the most injured friendly in range and respects
 	# upgraded-friendly maximum health.

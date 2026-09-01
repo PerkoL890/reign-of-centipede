@@ -711,19 +711,24 @@ func _show_building_manage_menu() -> void:
 	var site: Dictionary = buildings[building_menu_site_index]
 	var data: Dictionary = GameData.get_building(str(site.get("id", "")))
 	var level := int(site.get("upgrade_level", 0))
+	var upgrade_limit := _building_upgrade_limit(str(site.get("id", "")))
+	var displayed_level := level + 1 if str(site.get("id", "")) == "tall_building" else 1
 	_add_title("BUILDING OPTIONS", Vector2(112, 72), Vector2(426, 35), 24, Color("#e7f7d2"))
-	_add_label("%s  •  Upgrade level %d/2" % [data.get("display_name", "Building"), level], Vector2(65, 133), Vector2(510, 25), 14, Color("#c9e7cf"), HORIZONTAL_ALIGNMENT_CENTER)
-	if level < 2:
+	_add_label("%s  •  Level %d/%d" % [data.get("display_name", "Building"), displayed_level, upgrade_limit + 1], Vector2(65, 133), Vector2(510, 25), 14, Color("#c9e7cf"), HORIZONTAL_ALIGNMENT_CENTER)
+	if level < upgrade_limit:
 		var upgrade_cost := _building_upgrade_cost(data, level)
-		_add_button("UPGRADE  $%d\nStronger building, faster defenders" % upgrade_cost, Vector2(155, 190), Vector2(330, 52), _upgrade_selected_building, 12)
+		_add_button("UPGRADE TO LEVEL %d  $%d\nFortified tower, stronger UMP defenders" % [displayed_level + 1, upgrade_cost], Vector2(155, 190), Vector2(330, 52), _upgrade_selected_building, 12)
 	else:
-		_add_label("Maximum upgrade reached.", Vector2(155, 194), Vector2(330, 38), 13, Color("#e8d978"), HORIZONTAL_ALIGNMENT_CENTER)
+		_add_label("Tall Building is the only structure with a Level 2 upgrade." if upgrade_limit == 0 else "Maximum upgrade reached.", Vector2(115, 194), Vector2(410, 38), 13, Color("#e8d978"), HORIZONTAL_ALIGNMENT_CENTER)
 	var refund := int(data.get("cost", 0) * 0.5)
 	_add_button("DISMANTLE  +$%d\nReturn this site to rubble" % refund, Vector2(155, 258), Vector2(330, 52), _dismantle_selected_building, 12)
 	_add_button("CLOSE", Vector2(235, 345), Vector2(180, 34), _close_building_menu, 13)
 
 func _building_upgrade_cost(data: Dictionary, level: int) -> int:
 	return int(round(float(data.get("cost", 0)) * (0.55 + float(level) * 0.25)))
+
+func _building_upgrade_limit(building_id: String) -> int:
+	return 1 if building_id == "tall_building" else 0
 
 func _building_max_health(site: Dictionary, data: Dictionary) -> float:
 	return float(data.get("finished_health", 1)) * (1.0 + float(site.get("upgrade_level", 0)) * 0.5)
@@ -734,7 +739,7 @@ func _upgrade_selected_building() -> void:
 	var site: Dictionary = buildings[building_menu_site_index]
 	var data: Dictionary = GameData.get_building(str(site.get("id", "")))
 	var level := int(site.get("upgrade_level", 0))
-	if level >= 2:
+	if level >= _building_upgrade_limit(str(site.get("id", ""))):
 		_show_building_manage_menu()
 		return
 	var cost := _building_upgrade_cost(data, level)
@@ -747,7 +752,7 @@ func _upgrade_selected_building() -> void:
 	site["upgrade_level"] = level + 1
 	site["health"] = minf(_building_max_health(site, data), float(site.get("health", 0.0)) + float(data.get("finished_health", 1)) * 0.5)
 	buildings[building_menu_site_index] = site
-	_set_status("%s upgraded to level %d." % [data.get("display_name", "Building"), level + 1])
+	_set_status("%s upgraded to Level %d." % [data.get("display_name", "Building"), level + 2])
 	_show_building_manage_menu()
 
 func _dismantle_selected_building() -> void:
@@ -2707,8 +2712,8 @@ func _draw_buildings() -> void:
 			var data: Dictionary = GameData.get_building(art_id)
 			_draw_health_bar(position + Vector2(-25, -58), 50.0, float(site.get("health", 0.0)) / maxf(_building_max_health(site, data), 1.0), Color("#89e8a6"))
 			var level := int(site.get("upgrade_level", 0))
-			if level > 0 and interface_font != null:
-				draw_string(interface_font, position + Vector2(-12.0, -65.0), "LV%d" % level, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 8, Color("#f4e978"))
+			if art_id == "tall_building" and interface_font != null:
+				draw_string(interface_font, position + Vector2(-12.0, -65.0), "LV%d" % (level + 1), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 8, Color("#f4e978"))
 		if selected_building != "" and state == "rubble" and player.get("pos", Vector2.ZERO).distance_to(position) < 40.0:
 			draw_arc(position, 26.0, 0.0, TAU, 24, Color("#f3f8c8"), 1.5)
 
