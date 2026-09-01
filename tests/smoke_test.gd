@@ -586,6 +586,16 @@ func _run() -> void:
 	game._update_player()
 	_expect(game.equipped_weapon == "shotgun" and game.temporary_weapon_id.is_empty(), "Expired field drops should restore the previously equipped purchased weapon.")
 
+	# Builder's Sandbox starts peaceful, can toggle enemies for target practice,
+	# and completes chosen buildings immediately.
+	game._start_stage(1, game.GAME_MODE_SANDBOX, game.DIFFICULTY_NORMAL)
+	_expect(not game.sandbox_enemy_spawns_enabled, "Builder's Sandbox should begin with enemy spawns disabled.")
+	game._toggle_sandbox_enemy_spawns()
+	_expect(game.sandbox_enemy_spawns_enabled, "Sandbox enemy spawns should be switchable on for target practice.")
+	game.building_menu_site_index = 0
+	game._select_building("small_shack")
+	_expect(game.buildings[0].get("state", "rubble") == "complete", "Sandbox building selections should complete instantly.")
+
 	# Enemy visuals use the original parent wrapper frames at their native scale,
 	# not the old hand-authored 24/42/48px substitute rectangles.
 	_expect_vector_close(game._enemy_render_size("green_centipede"), Vector2(69.0, 161.0), "Green Centipede should retain its original native body dimensions.")

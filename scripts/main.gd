@@ -150,6 +150,13 @@ const GAME_MODE_RULES := {
 	GAME_MODE_SETTLEMENT_DEFENSE: {"title": "SETTLEMENT DEFENSE", "description": "Protect the two starter buildings for 25 waves.", "target_waves": 25, "wave_interval": 600, "starting_money": 300},
 	GAME_MODE_SANDBOX: {"title": "BUILDER'S SANDBOX", "description": "Build and experiment freely; no loss or final wave.", "target_waves": 0, "wave_interval": 900, "starting_money": 999999},
 }
+const GAME_MODE_MUSIC := {
+	GAME_MODE_FAITHFUL: {"path": "res://assets/original/audio/game.mp3", "pitch": 1.0},
+	GAME_MODE_CLASSIC_SURVIVAL: {"path": "res://assets/original/audio/game.mp3", "pitch": 0.92},
+	GAME_MODE_RAPID_ASSAULT: {"path": "res://assets/original/audio/game.mp3", "pitch": 1.08},
+	GAME_MODE_SETTLEMENT_DEFENSE: {"path": "res://assets/original/audio/game.mp3", "pitch": 0.97},
+	GAME_MODE_SANDBOX: {"path": "res://assets/original/audio/menu.mp3", "pitch": 0.88},
+}
 
 var mode := MODE_MENU
 var paused := false
@@ -162,6 +169,7 @@ var stage_elapsed_ticks := 0
 var settlement_core_indices: Array[int] = []
 var active_wave_modifier := ""
 var elite_defeats := 0
+var sandbox_enemy_spawns_enabled := false
 var simulation_tick := 0
 var shoot_counter := 0
 var wave := 1
@@ -208,6 +216,7 @@ var status_label: Label
 var hud_health_fill: ColorRect
 var music_player: AudioStreamPlayer
 var current_music_path := ""
+var current_music_pitch := 1.0
 var random := RandomNumberGenerator.new()
 var texture_cache := {}
 var sound_last_tick := {}
@@ -270,6 +279,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_show_weapon_menu()
 		elif event.keycode == KEY_Q:
 			_activate_salvage_pulse()
+		elif event.keycode == KEY_T and game_mode == GAME_MODE_SANDBOX:
+			_toggle_sandbox_enemy_spawns()
 		elif event.keycode == KEY_ESCAPE:
 			_show_pause_menu()
 
@@ -421,6 +432,7 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	stage_elapsed_ticks = 0
 	active_wave_modifier = ""
 	elite_defeats = 0
+	sandbox_enemy_spawns_enabled = false
 	settlement_core_indices.clear()
 	mode = MODE_PLAY
 	paused = false
@@ -472,7 +484,7 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 		_create_settlement_starters()
 	_clear_ui()
 	_build_hud()
-	_play_music("res://assets/original/audio/game.mp3")
+	_play_mode_music()
 	_set_status("Stage %d — %s (%s)" % [stage_id, str(rules.get("description", "")), str(DIFFICULTY_RULES[difficulty].get("title", difficulty))])
 	if first_time_playing and stage_id == 1 and game_mode == GAME_MODE_FAITHFUL:
 		_show_tutorial()
@@ -560,7 +572,16 @@ func _build_hud() -> void:
 	ui_layer.add_child(weapons_button)
 	if cheats_available:
 		_add_button("CHEATS", Vector2(555, 409), Vector2(82, 25), _show_cheat_menu, 10)
+	if game_mode == GAME_MODE_SANDBOX:
+		_add_button("SPAWNS: %s" % ("ON" if sandbox_enemy_spawns_enabled else "OFF"), Vector2(530, 409), Vector2(108, 25), _toggle_sandbox_enemy_spawns, 10)
 	_update_hud()
+
+func _toggle_sandbox_enemy_spawns() -> void:
+	if game_mode != GAME_MODE_SANDBOX:
+		return
+	sandbox_enemy_spawns_enabled = not sandbox_enemy_spawns_enabled
+	_set_status("Sandbox enemy spawns %s. Press T to toggle." % ("enabled" if sandbox_enemy_spawns_enabled else "disabled"))
+	_build_hud()
 
 func _show_cheat_menu() -> void:
 	if not cheats_available:
@@ -765,7 +786,7 @@ func _select_building(building_id: String) -> void:
 	site["constructing"] = true
 	site["build_health"] = 0.0
 	site["build_total"] = float(data.get("finished_health", 100)) * 3.0
-	if instant_build_cheat:
+	if instant_build_cheat or game_mode == GAME_MODE_SANDBOX:
 		_complete_building(site)
 	buildings[building_menu_site_index] = site
 	building_menu_site_index = -1
@@ -1610,6 +1631,8 @@ func _friendly_home_surface(position: Vector2) -> Rect2:
 	return best_surface
 
 func _handle_spawns() -> void:
+	if game_mode == GAME_MODE_SANDBOX and not sandbox_enemy_spawns_enabled:
+		return
 	var spawn_tick := simulation_tick if game_mode == GAME_MODE_FAITHFUL else stage_elapsed_ticks
 	if game_mode == GAME_MODE_RAPID_ASSAULT:
 		spawn_tick *= 2
@@ -3068,17 +3091,25 @@ func _play_sound_once(sound_id: String, interval_ticks: int) -> void:
 		sound_last_tick[sound_id] = simulation_tick
 		_play_sound(sound_id)
 
-func _play_music(path: String) -> void:
+func _play_mode_music() -> void:
+	var profile: Dictionary = GAME_MODE_MUSIC.get(game_mode, GAME_MODE_MUSIC[GAME_MODE_FAITHFUL])
+	_play_music(str(profile.get("path", "res://assets/original/audio/game.mp3")), float(profile.get("pitch", 1.0)))
+
+func _play_music(path: String, pitch: float = 1.0) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	if not ResourceLoader.exists(path):
 		return
+	if current_music_path == path and is_equal_approx(current_music_pitch, pitch) and music_player.playing:
+		return
 	music_player.stop()
 	current_music_path = path
+	current_music_pitch = pitch
 	var music_stream: AudioStream = load(path)
 	_configure_music_stream(music_stream)
 	music_player.stream = music_stream
 	music_player.volume_db = -12.0
+	music_player.pitch_scale = pitch
 	music_player.play()
 
 func _configure_music_stream(stream: AudioStream) -> void:
@@ -3090,6 +3121,7 @@ func _configure_music_stream(stream: AudioStream) -> void:
 
 func _stop_music() -> void:
 	current_music_path = ""
+	current_music_pitch = 1.0
 	if music_player != null:
 		music_player.stop()
 
