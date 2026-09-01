@@ -980,7 +980,7 @@ func _handle_misc() -> bool:
 		_finish_stage(false)
 		return true
 	var target_waves := _target_wave_count()
-	if target_waves > 0 and wave > target_waves:
+	if target_waves > 0 and wave > target_waves and not _rapid_boss_active():
 		_finish_stage(true)
 		return true
 	return false
@@ -997,6 +997,11 @@ func _set_wave_modifier() -> void:
 func _spawn_elite_for_wave() -> void:
 	if game_mode == GAME_MODE_FAITHFUL or game_mode == GAME_MODE_SANDBOX or wave < 5 or wave % 5 != 0:
 		return
+	if game_mode == GAME_MODE_RAPID_ASSAULT and _rapid_boss_active():
+		return
+	if game_mode == GAME_MODE_RAPID_ASSAULT and wave == _target_wave_count():
+		_spawn_rapid_assault_boss()
+		return
 	for enemy in enemies:
 		if bool(enemy.get("elite", false)):
 			return
@@ -1012,6 +1017,32 @@ func _spawn_elite_for_wave() -> void:
 	elite["loot_carrier"] = true
 	enemies[enemies.size() - 1] = elite
 	_set_status("ELITE INCOMING — %s captain" % GameData.get_enemy(enemy_id).get("display_name", enemy_id))
+
+func _rapid_boss_active() -> bool:
+	for enemy in enemies:
+		if bool(enemy.get("boss", false)):
+			return true
+	return false
+
+func _spawn_rapid_assault_boss() -> void:
+	if _rapid_boss_active():
+		return
+	_create_enemy("flying_mech", player.get("pos", Vector2.ZERO) + Vector2(250.0, -175.0))
+	if enemies.is_empty():
+		return
+	var boss: Dictionary = enemies.back()
+	var boss_health := 2600.0 * float(DIFFICULTY_RULES[difficulty].get("enemy_health_multiplier", 1.0))
+	boss["boss"] = true
+	boss["boss_name"] = "CENTIPEDE OVERSEER"
+	boss["health"] = boss_health
+	boss["boss_max_health"] = boss_health
+	boss["speed"] = 1.35
+	boss["targets_objects"] = false
+	boss["boss_phase"] = 0
+	boss["boss_deployed_docks"] = false
+	enemies[enemies.size() - 1] = boss
+	_set_status("WAVE %d BOSS — CENTIPEDE OVERSEER. Destroy docks to cut reinforcements." % wave)
+	_play_sound("explosion")
 
 func _target_wave_count() -> int:
 	if game_mode == GAME_MODE_RAPID_ASSAULT and difficulty == DIFFICULTY_HARD:
@@ -1585,19 +1616,20 @@ func _handle_spawns() -> void:
 	var spawn_wave := _rapid_assault_source_wave() if game_mode == GAME_MODE_RAPID_ASSAULT else wave
 	var difficulty_rules: Dictionary = DIFFICULTY_RULES[difficulty]
 	var modifier: Dictionary = WAVE_MODIFIERS.get(active_wave_modifier, WAVE_MODIFIERS[""])
-	for event in GameData.scheduled_enemy_events(spawn_wave, spawn_tick):
-		var spawn_count := int(difficulty_rules.get("spawn_multiplier", 1)) + int(modifier.get("extra_spawns", 0))
-		for spawn_index in range(spawn_count):
-			var spawn_position: Vector2
-			if str(event.get("spawn_kind", "player_relative")) == "fixed":
-				spawn_position = _source_pixels_to_map(Vector2(-540.0, -410.0)) + Vector2(spawn_index * 28.0, 0.0)
-			else:
-				spawn_position = player.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-500.0, 500.0), random.randf_range(-400.0, -100.0))
-			_create_enemy(str(event.get("enemy_id", "small_flying")), spawn_position)
+	if not _rapid_boss_active():
+		for event in GameData.scheduled_enemy_events(spawn_wave, spawn_tick):
+			var spawn_count := int(difficulty_rules.get("spawn_multiplier", 1)) + int(modifier.get("extra_spawns", 0))
+			for spawn_index in range(spawn_count):
+				var spawn_position: Vector2
+				if str(event.get("spawn_kind", "player_relative")) == "fixed":
+					spawn_position = _source_pixels_to_map(Vector2(-540.0, -410.0)) + Vector2(spawn_index * 28.0, 0.0)
+				else:
+					spawn_position = player.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-500.0, 500.0), random.randf_range(-400.0, -100.0))
+				_create_enemy(str(event.get("enemy_id", "small_flying")), spawn_position)
 	if game_mode == GAME_MODE_CLASSIC_SURVIVAL:
 		_spawn_survival_pressure(spawn_tick)
 	var dock_event: Dictionary = GameData.scheduled_dock_event(spawn_wave, spawn_tick, stage_id)
-	if not dock_event.is_empty() and docks.size() < GameData.MAX_DOCKS:
+	if not _rapid_boss_active() and not dock_event.is_empty() and docks.size() < GameData.MAX_DOCKS:
 		_create_dock(str(dock_event.get("dock_id", "blue")), _choose_dock_enemy(dock_event))
 
 func _rapid_assault_source_wave() -> int:
@@ -1768,6 +1800,9 @@ func _move_flying_enemy(enemy: Dictionary) -> void:
 	enemy["pos"] = position
 
 func _move_shooting_enemy(enemy: Dictionary) -> void:
+	if bool(enemy.get("boss", false)):
+		_move_rapid_assault_boss(enemy)
+		return
 	var layout := StageLayout.layout_for(stage_id)
 	var islands: Array = layout.get("islands", [])
 	if islands.is_empty():
@@ -1789,6 +1824,31 @@ func _move_shooting_enemy(enemy: Dictionary) -> void:
 		_create_laser(position, Vector2.LEFT)
 		enemy["has_shot"] = true
 	enemy["move_dir"] = -1.0
+	enemy["pos"] = position
+
+func _move_rapid_assault_boss(enemy: Dictionary) -> void:
+	var position: Vector2 = enemy.get("pos", Vector2.ZERO)
+	var player_position: Vector2 = player.get("pos", position)
+	var max_health := maxf(float(enemy.get("boss_max_health", 1.0)), 1.0)
+	var health_fraction := float(enemy.get("health", 0.0)) / max_health
+	var phase := 2 if health_fraction <= 0.30 else (1 if health_fraction <= 0.65 else 0)
+	if phase > int(enemy.get("boss_phase", 0)):
+		enemy["boss_phase"] = phase
+		_set_status("OVERSEER PHASE %d — %s" % [phase + 1, "reinforcement docks deployed" if phase == 1 else "slab barrage accelerated"])
+	if phase >= 1 and not bool(enemy.get("boss_deployed_docks", false)):
+		_create_dock("red", "small_green")
+		_create_dock("purple", "orange_flying")
+		enemy["boss_deployed_docks"] = true
+	var hover_target := player_position + Vector2(150.0 * sin(float(enemy.get("counter", 0)) * 0.02), -135.0)
+	position += (hover_target - position).normalized() * float(enemy.get("speed", 1.0))
+	var fire_interval := 105 if phase == 0 else (78 if phase == 1 else 52)
+	if int(enemy.get("counter", 0)) % fire_interval == 0:
+		var direction := (player_position - position).normalized()
+		_create_laser(position, direction if direction.length_squared() > 0.01 else Vector2.LEFT)
+		if phase >= 2:
+			_create_laser(position + Vector2(0.0, -18.0), direction.rotated(0.22))
+			_create_laser(position + Vector2(0.0, 18.0), direction.rotated(-0.22))
+	enemy["move_dir"] = signf(player_position.x - position.x)
 	enemy["pos"] = position
 
 func _enemy_target(enemy: Dictionary) -> Dictionary:
@@ -1878,6 +1938,7 @@ func _kill_enemy(index: int) -> void:
 	var enemy: Dictionary = enemies[index]
 	var data: Dictionary = GameData.get_enemy(str(enemy.get("id", "")))
 	var position: Vector2 = enemy.get("pos", Vector2.ZERO)
+	var was_boss := bool(enemy.get("boss", false))
 	for count in range(int(data.get("worth", 1))):
 		_create_coin(position + Vector2(random.randf_range(-8.0, 8.0), random.randf_range(-8.0, 8.0)))
 	if bool(enemy.get("loot_carrier", false)):
@@ -1894,6 +1955,11 @@ func _kill_enemy(index: int) -> void:
 	score += int(data.get("worth", 1)) * 4
 	enemies.remove_at(index)
 	_play_sound("explosion")
+	if was_boss:
+		money += 300
+		score += 2500
+		_create_float_text("OVERSEER DESTROYED +$300", position + Vector2(-52.0, -45.0), true)
+		_finish_stage(true)
 
 func _create_dock(dock_id: String, enemy_id: String) -> void:
 	var layout := StageLayout.layout_for(stage_id)
@@ -2464,7 +2530,20 @@ func _draw() -> void:
 	_draw_player()
 	_draw_float_texts()
 	draw_set_transform(Vector2.ZERO)
+	_draw_boss_hud()
 	_draw_aim_cursor()
+
+func _draw_boss_hud() -> void:
+	for enemy in enemies:
+		if not bool(enemy.get("boss", false)):
+			continue
+		var fraction := float(enemy.get("health", 0.0)) / maxf(float(enemy.get("boss_max_health", 1.0)), 1.0)
+		draw_rect(Rect2(170.0, 34.0, 310.0, 11.0), Color(0.02, 0.03, 0.06, 0.9))
+		draw_rect(Rect2(172.0, 36.0, 306.0 * clampf(fraction, 0.0, 1.0), 7.0), Color("#c84953"))
+		draw_rect(Rect2(170.0, 34.0, 310.0, 11.0), Color("#f0a0a6"), false, 1.0)
+		if interface_font != null:
+			draw_string(interface_font, Vector2(224.0, 30.0), "%s  •  PHASE %d" % [enemy.get("boss_name", "OVERSEER"), int(enemy.get("boss_phase", 0)) + 1], HORIZONTAL_ALIGNMENT_LEFT, -1.0, 10, Color("#ffd4d7"))
+		return
 
 func _draw_screen_backdrop() -> void:
 	# Shape 2 in the original is a single vertical 1x409 sky gradient stretched
@@ -2695,6 +2774,8 @@ func _draw_enemies() -> void:
 			draw_arc(position + Vector2(0.0, body_top - 8.0), 17.0, 0.0, TAU, 20, Color("#d990ff"), 1.6)
 			if interface_font != null:
 				draw_string(interface_font, position + Vector2(-13.0, body_top - 17.0), "ELITE", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 8, Color("#e9b6ff"))
+		if bool(enemy.get("boss", false)):
+			draw_arc(position, 72.0, 0.0, TAU, 32, Color("#ff7070"), 2.0)
 
 func _enemy_animation_offset(enemy: Dictionary) -> Vector2:
 	var counter := float(enemy.get("counter", 0))

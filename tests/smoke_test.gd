@@ -563,6 +563,18 @@ func _run() -> void:
 		game._update_enemies()
 	_expect(game.elite_defeats == 1 and game.boxes.size() >= 2, "Defeating an elite should count toward the mode objective and leave bonus supply caches.")
 
+	# Rapid Assault's final wave replaces the captain with a proper boss and
+	# keeps dock reinforcements as the only post-arrival spawn pressure.
+	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT, game.DIFFICULTY_NORMAL)
+	game.wave = game._target_wave_count()
+	game._spawn_elite_for_wave()
+	_expect(game._rapid_boss_active() and bool(game.enemies[0].get("boss", false)), "The final Rapid Assault wave should spawn the Centipede Overseer instead of an elite captain.")
+	if not game.enemies.is_empty():
+		var boss: Dictionary = game.enemies[0]
+		boss["health"] = float(boss.get("boss_max_health", 1.0)) * 0.60
+		game._move_shooting_enemy(boss)
+		_expect(int(boss.get("boss_phase", 0)) == 1 and bool(boss.get("boss_deployed_docks", false)), "At 65% health the Overseer should enter phase two and deploy reinforcement docks.")
+
 	# A temporary field weapon must restore the purchased weapon that it replaced,
 	# never force the player back to the pistol.
 	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT, game.DIFFICULTY_NORMAL)
