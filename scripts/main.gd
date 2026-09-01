@@ -179,6 +179,7 @@ var coins: Array = []
 var hearts: Array = []
 var weapon_pickups: Array = []
 var temporary_weapon_id := ""
+var field_weapon_return_id := "pistol"
 var temporary_weapon_ticks := 0
 var ability_cooldown_ticks := 0
 var ability_pulse_ticks := 0
@@ -448,6 +449,7 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	hearts.clear()
 	weapon_pickups.clear()
 	temporary_weapon_id = ""
+	field_weapon_return_id = "pistol"
 	temporary_weapon_ticks = 0
 	ability_cooldown_ticks = 0
 	ability_pulse_ticks = 0
@@ -954,8 +956,8 @@ func _handle_misc() -> bool:
 	var balloon_interval := GameData.BALLOON_SPAWN_INTERVAL_TICKS
 	var balloon_chance := GameData.BALLOON_SPAWN_CHANCE
 	if game_mode == GAME_MODE_RAPID_ASSAULT and difficulty == DIFFICULTY_HARD:
-		balloon_interval = 150
-		balloon_chance = 1.0
+		balloon_interval = 300
+		balloon_chance = 0.65
 	if balloon_clock > 0 and balloon_clock % balloon_interval == 0 and random.randf() < balloon_chance:
 		# Source c_mc coordinates: x=-200..700, y=300. Convert once to the
 		# map coordinate system used by this recreation.
@@ -1026,9 +1028,11 @@ func _update_player() -> void:
 	if temporary_weapon_ticks > 0:
 		temporary_weapon_ticks -= 1
 		if temporary_weapon_ticks == 0 and equipped_weapon == temporary_weapon_id:
-			equipped_weapon = "pistol"
+			equipped_weapon = field_weapon_return_id if purchased_weapons.has(field_weapon_return_id) else "pistol"
+			_set_status("Field weapon expired; %s re-equipped." % GameData.get_weapon(equipped_weapon).get("display_name", equipped_weapon))
+		if temporary_weapon_ticks == 0:
 			temporary_weapon_id = ""
-			_set_status("Field weapon expired; pistol re-equipped.")
+			field_weapon_return_id = "pistol"
 	var velocity: Vector2 = player.get("vel", Vector2.ZERO)
 	var moving := false
 	var jump_key_down := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)
@@ -1674,7 +1678,7 @@ func _create_enemy(enemy_id: String, position: Vector2) -> void:
 		"shoot_target": -1,
 		"has_shot": false,
 		"fall_velocity": 0.0,
-		"loot_carrier": game_mode != GAME_MODE_FAITHFUL and random.randf() < minf(0.07, 0.018 + float(wave) * 0.001),
+		"loot_carrier": game_mode != GAME_MODE_FAITHFUL and random.randf() < minf(0.045, 0.012 + float(wave) * 0.0007),
 	})
 
 func _update_enemies() -> void:
@@ -2220,7 +2224,10 @@ func _create_heart(position: Vector2) -> void:
 	})
 
 func _create_weapon_pickup(position: Vector2) -> void:
-	var candidates := ["shotgun", "ump", "flamer", "bazooka"]
+	var candidates := ["shotgun", "ump", "flamer"]
+	# Bazookas remain a late-run jackpot, not a routine crate reward.
+	if wave >= 10 and random.randf() < 0.10:
+		candidates.append("bazooka")
 	var weapon_id: String = candidates[random.randi_range(0, candidates.size() - 1)]
 	weapon_pickups.append({"pos": position, "weapon_id": weapon_id, "counter": 0})
 
@@ -2309,6 +2316,8 @@ func _update_pickups() -> void:
 		pickup["counter"] = int(pickup.get("counter", 0)) + 1
 		var pickup_position: Vector2 = pickup.get("pos", Vector2.ZERO)
 		if pickup_position.distance_to(player.get("pos", Vector2.ZERO)) < 22.0:
+			if temporary_weapon_ticks <= 0:
+				field_weapon_return_id = equipped_weapon
 			temporary_weapon_id = str(pickup.get("weapon_id", "shotgun"))
 			temporary_weapon_ticks = 600
 			equipped_weapon = temporary_weapon_id
@@ -2350,7 +2359,8 @@ func _update_boxes_and_balloons() -> void:
 					_create_coin(position)
 				for heart_index in range(random.randi_range(GameData.CRATE_MIN_HEARTS, GameData.CRATE_MAX_HEARTS) * reward_multiplier):
 					_create_heart(position)
-			if game_mode != GAME_MODE_FAITHFUL and random.randf() < 0.18:
+			var field_drop_chance := 0.05 if game_mode == GAME_MODE_RAPID_ASSAULT else 0.08
+			if game_mode != GAME_MODE_FAITHFUL and random.randf() < field_drop_chance:
 				_create_weapon_pickup(position + Vector2(0.0, -12.0))
 			score += GameData.CRATE_SCORE
 			boxes.remove_at(index)

@@ -563,6 +563,17 @@ func _run() -> void:
 		game._update_enemies()
 	_expect(game.elite_defeats == 1 and game.boxes.size() >= 2, "Defeating an elite should count toward the mode objective and leave bonus supply caches.")
 
+	# A temporary field weapon must restore the purchased weapon that it replaced,
+	# never force the player back to the pistol.
+	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT, game.DIFFICULTY_NORMAL)
+	game.purchased_weapons["shotgun"] = true
+	game.equipped_weapon = "flamer"
+	game.temporary_weapon_id = "flamer"
+	game.field_weapon_return_id = "shotgun"
+	game.temporary_weapon_ticks = 1
+	game._update_player()
+	_expect(game.equipped_weapon == "shotgun" and game.temporary_weapon_id.is_empty(), "Expired field drops should restore the previously equipped purchased weapon.")
+
 	# Enemy visuals use the original parent wrapper frames at their native scale,
 	# not the old hand-authored 24/42/48px substitute rectangles.
 	_expect_vector_close(game._enemy_render_size("green_centipede"), Vector2(69.0, 161.0), "Green Centipede should retain its original native body dimensions.")
