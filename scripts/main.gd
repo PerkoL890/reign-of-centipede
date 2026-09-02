@@ -30,7 +30,7 @@ const REINFORCEMENT_VISIBLE_TICKS := 360
 const RAPID_FLARE_OPTIONS := {
 	"squad": {"title": "TROOP LIFT", "cost": 220, "description": "Giant troop transport: deploy up to 10 fighters."},
 	"medical": {"title": "MEDEVAC", "cost": 125, "description": "Rescue helicopter: delivers 6 field medkits."},
-	"arsenal": {"title": "ARSENAL LIFT", "cost": 190, "description": "Cargo helicopter: delivers 3 temporary weapon cases."},
+	"arsenal": {"title": "GUNSHIP RUN", "cost": 260, "description": "AC-130 suppresses docks and fires 3 platform-buster shells."},
 }
 const FLAMER_BURN_MAX_STACKS := 8
 const FLAMER_BURN_DURATION_TICKS := 90
@@ -209,6 +209,7 @@ var small_clouds: Array = []
 var big_clouds: Array = []
 var explosions: Array = []
 var reinforcement_calls: Array = []
+var gunship_runs: Array = []
 var cheats_available := false
 var infinite_money_cheat := false
 var instant_build_cheat := false
@@ -495,6 +496,7 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	smokes.clear()
 	explosions.clear()
 	reinforcement_calls.clear()
+	gunship_runs.clear()
 	boss_intro_ticks = 0
 	weapon_shake_ticks = 0
 	chaingun_ground_recoil = 0.0
@@ -1034,6 +1036,7 @@ func _tick() -> void:
 	_update_lasers()
 	_update_explosions()
 	_update_reinforcement_calls()
+	_update_gunship_runs()
 	boss_intro_ticks = maxi(0, boss_intro_ticks - 1)
 	_update_boss_audio()
 	_update_smoke()
@@ -2193,6 +2196,7 @@ func _update_docks() -> void:
 			_play_sound("explosion")
 			continue
 		dock["counter"] = int(dock.get("counter", 0)) + 1
+		dock["suppressed_ticks"] = maxi(0, int(dock.get("suppressed_ticks", 0)) - 1)
 		if game_mode != GAME_MODE_FAITHFUL:
 			var dock_data: Dictionary = GameData.get_dock(str(dock.get("id", "blue")))
 			var health_fraction := float(dock.get("health", 0.0)) / maxf(float(dock_data.get("health", 1)), 1.0)
@@ -2234,7 +2238,7 @@ func _update_docks() -> void:
 		var spawn_interval := int(dock.get("spawn_interval", 190))
 		if game_mode != GAME_MODE_FAITHFUL:
 			spawn_interval = int(round(float(spawn_interval) * (0.78 if int(dock.get("phase", 0)) == 1 else (0.60 if int(dock.get("phase", 0)) >= 2 else 1.0))))
-		if bool(dock.get("is_docked", false)) and int(dock.get("counter", 0)) % spawn_interval == 0:
+		if bool(dock.get("is_docked", false)) and int(dock.get("suppressed_ticks", 0)) <= 0 and int(dock.get("counter", 0)) % spawn_interval == 0:
 			var count_before := enemies.size()
 			_create_enemy(str(dock.get("enemy_id", "small_green")), position)
 			if enemies.size() > count_before:
@@ -2379,8 +2383,8 @@ func _deploy_flare_support(target: Vector2, support_type: String) -> void:
 			deployed += 1
 		_create_float_text("NURSES DEPLOYED %d" % deployed, target + Vector2(-42.0, -42.0))
 	elif support_type == "arsenal":
-		_create_armory_cache(target + Vector2(0.0, -35.0))
-		_create_float_text("ARMORY CACHE DEPLOYED", target + Vector2(-48.0, -42.0))
+		gunship_runs.append({"target": target, "counter": 0, "shells_fired": 0})
+		_create_float_text("GUNSHIP ENGAGING", target + Vector2(-40.0, -42.0))
 	else:
 		var fighter_data: Dictionary = GameData.get_building("medium_shack")
 		var deployed := 0
@@ -2392,6 +2396,53 @@ func _deploy_flare_support(target: Vector2, support_type: String) -> void:
 			deployed += 1
 		_create_float_text("SQUAD DEPLOYED %d" % deployed, target + Vector2(-28.0, -42.0))
 	_play_sound("pickup")
+
+func _update_gunship_runs() -> void:
+	for run_index in range(gunship_runs.size() - 1, -1, -1):
+		var run: Dictionary = gunship_runs[run_index]
+		run["counter"] = int(run.get("counter", 0)) + 1
+		var counter := int(run.get("counter", 0))
+		# Miniguns constantly pressure active dock platforms and suppress their
+		# spawn timer. This deliberately makes platform destruction strategic.
+		if counter % 8 == 0:
+			var dock_index := _gunship_target_dock_index(run.get("target", Vector2.ZERO))
+			if dock_index >= 0:
+				var dock: Dictionary = docks[dock_index]
+				dock["health"] = float(dock.get("health", 0.0)) - 9.0
+				dock["suppressed_ticks"] = maxi(int(dock.get("suppressed_ticks", 0)), 180)
+				docks[dock_index] = dock
+				_create_smoke(dock.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-20.0, 20.0), -8.0))
+		# Three 105mm shots: platforms first, then the densest available enemy.
+		if counter >= 24 and counter % 36 == 24 and int(run.get("shells_fired", 0)) < 3:
+			var shell_dock_index := _gunship_target_dock_index(run.get("target", Vector2.ZERO))
+			if shell_dock_index >= 0:
+				var platform: Dictionary = docks[shell_dock_index]
+				platform["health"] = float(platform.get("health", 0.0)) - 180.0
+				platform["suppressed_ticks"] = maxi(int(platform.get("suppressed_ticks", 0)), 240)
+				docks[shell_dock_index] = platform
+				_create_bazooka_explosion(platform.get("pos", Vector2.ZERO))
+			elif not enemies.is_empty():
+				var enemy_target: Dictionary = enemies[0]
+				_create_bazooka_explosion(enemy_target.get("pos", run.get("target", Vector2.ZERO)))
+			run["shells_fired"] = int(run.get("shells_fired", 0)) + 1
+			_play_sound("explosion")
+		if counter >= 125:
+			gunship_runs.remove_at(run_index)
+		else:
+			gunship_runs[run_index] = run
+
+func _gunship_target_dock_index(target: Vector2) -> int:
+	var best_index := -1
+	var best_distance := INF
+	for dock_index in range(docks.size()):
+		var dock: Dictionary = docks[dock_index]
+		if float(dock.get("health", 0.0)) <= 0.0:
+			continue
+		var distance: float = dock.get("pos", target).distance_to(target)
+		if distance < best_distance:
+			best_distance = distance
+			best_index = dock_index
+	return best_index
 
 func _reinforcement_helicopter_position(call: Dictionary) -> Vector2:
 	var target: Vector2 = call.get("target", Vector2.ZERO)

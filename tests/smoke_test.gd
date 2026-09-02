@@ -638,8 +638,9 @@ func _run() -> void:
 	game.weapon_pickups.clear()
 	game._deploy_flare_support(Vector2.ZERO, "medical")
 	_expect(game.friendlies.size() == 3 and bool(game.friendlies[0].get("parachuting", false)), "The MedEvac flare option should deploy three parachuting nurses.")
+	game.gunship_runs.clear()
 	game._deploy_flare_support(Vector2.ZERO, "arsenal")
-	_expect(game.weapon_pickups.size() == 1 and bool(game.weapon_pickups[0].get("permanent", false)), "The Arsenal flare option should deliver one permanent armory cache.")
+	_expect(game.gunship_runs.size() == 1, "The Gunship Run flare option should begin an AC-130 attack pass.")
 
 	# Field weapons use ordinary pickup gravity and settle on the platform rather
 	# than remaining suspended where their crate was destroyed.
