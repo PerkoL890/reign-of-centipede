@@ -619,10 +619,13 @@ func _run() -> void:
 	game.money = 500
 	game._call_reinforcements(0)
 	_expect(game.reinforcement_calls.size() == 1 and game.money == 500 - game.REINFORCEMENT_DROP_COST, "A Rapid Assault reinforcement call should spend its fixed cost and create a transport event.")
-	_expect(absf(game._world_draw_scale() - 0.58) < 0.01, "An active transport should switch the camera renderer into the wide-shot zoom.")
+	_expect(absf(game._world_draw_scale() - 1.0) < 0.01, "The ten-second reinforcement suspense window should not zoom the camera before the transport appears.")
 	var helicopter_texture: Texture2D = game._load_texture("res://assets/generated/reinforcement_helicopter_body.png")
 	_expect(helicopter_texture != null, "The reinforcement helicopter body texture should load even before editor-side PNG import completes.")
-	for tick in range(165):
+	for tick in range(300):
+		game._update_reinforcement_calls()
+	_expect(absf(game._world_draw_scale() - 0.58) < 0.01, "When the transport appears, the camera should switch into the wide-shot zoom.")
+	for tick in range(90):
 		game._update_reinforcement_calls()
 	_expect(game.friendlies.size() == 10 and bool(game.reinforcement_calls[0].get("dropped", false)), "The transport should drop a ten-fighter squad at the chosen rubble site.")
 

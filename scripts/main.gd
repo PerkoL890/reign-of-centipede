@@ -24,6 +24,8 @@ const BAZOOKA_EXPLOSION_RADIUS := 72.0
 const BAZOOKA_EXPLOSION_DAMAGE := 72.0
 const REINFORCEMENT_DROP_COST := 220
 const REINFORCEMENT_HELICOPTER_SIZE := Vector2(860.0, 410.0)
+const REINFORCEMENT_SUSPENSE_TICKS := 300
+const REINFORCEMENT_VISIBLE_TICKS := 360
 const FLAMER_BURN_MAX_STACKS := 6
 const FLAMER_BURN_DURATION_TICKS := 90
 const WAVE_MODIFIERS := {
@@ -218,6 +220,9 @@ var hud_labels := {}
 var status_label: Label
 var hud_health_fill: ColorRect
 var music_player: AudioStreamPlayer
+var helicopter_audio_player: AudioStreamPlayer
+var helicopter_audio_playback: AudioStreamGeneratorPlayback
+var helicopter_audio_time := 0.0
 var current_music_path := ""
 var current_music_pitch := 1.0
 var random := RandomNumberGenerator.new()
@@ -254,6 +259,8 @@ func _ready() -> void:
 	music_player = AudioStreamPlayer.new()
 	add_child(music_player)
 	music_player.finished.connect(_restart_music_if_needed)
+	helicopter_audio_player = AudioStreamPlayer.new()
+	add_child(helicopter_audio_player)
 	_show_main_menu()
 	if cheats_available:
 		call_deferred("_show_cheat_menu")
@@ -2247,7 +2254,7 @@ func _update_reinforcement_calls() -> void:
 		call["counter"] = int(call.get("counter", 0)) + 1
 		var counter := int(call.get("counter", 0))
 		var target: Vector2 = call.get("target", Vector2.ZERO)
-		if counter == 165 and not bool(call.get("dropped", false)):
+		if counter == REINFORCEMENT_SUSPENSE_TICKS + 90 and not bool(call.get("dropped", false)):
 			var fighter_data: Dictionary = GameData.get_building("medium_shack")
 			for fighter_index in range(10):
 				var offset := (float(fighter_index) - 4.5) * 9.0
@@ -2255,22 +2262,30 @@ func _update_reinforcement_calls() -> void:
 			call["dropped"] = true
 			_create_float_text("SQUAD DEPLOYED", target + Vector2(-28.0, -42.0))
 			_play_sound("pickup")
-		if counter >= 360:
+		if counter >= REINFORCEMENT_SUSPENSE_TICKS + REINFORCEMENT_VISIBLE_TICKS:
 			reinforcement_calls.remove_at(index)
 		else:
 			reinforcement_calls[index] = call
+	_update_helicopter_audio()
 
 func _reinforcement_helicopter_position(call: Dictionary) -> Vector2:
 	var target: Vector2 = call.get("target", Vector2.ZERO)
 	var counter := int(call.get("counter", 0))
-	if counter < 105:
-		return target + Vector2(lerpf(-920.0, 0.0, float(counter) / 105.0), -220.0)
-	if counter < 225:
-		return target + Vector2(sin(float(counter - 105) * 0.07) * 18.0, -220.0)
-	return target + Vector2(lerpf(0.0, 920.0, float(counter - 225) / 135.0), -220.0)
+	var visible_counter := counter - REINFORCEMENT_SUSPENSE_TICKS
+	if visible_counter < 75:
+		return target + Vector2(lerpf(-920.0, 0.0, float(visible_counter) / 75.0), -220.0)
+	if visible_counter < 285:
+		return target + Vector2(sin(float(visible_counter - 75) * 0.07) * 18.0, -220.0)
+	return target + Vector2(lerpf(0.0, 920.0, float(visible_counter - 285) / 75.0), -220.0)
+
+func _reinforcement_is_visible() -> bool:
+	for call in reinforcement_calls:
+		if int(call.get("counter", 0)) >= REINFORCEMENT_SUSPENSE_TICKS:
+			return true
+	return false
 
 func _world_draw_scale() -> float:
-	return 0.58 if not reinforcement_calls.is_empty() else 1.0
+	return 0.58 if _reinforcement_is_visible() else 1.0
 
 func _world_draw_offset() -> Vector2:
 	var scale := _world_draw_scale()
@@ -2290,6 +2305,34 @@ func _set_world_draw_transform() -> void:
 func _set_world_sprite_transform(point: Vector2, rotation: float = 0.0, base_scale: Vector2 = Vector2.ONE) -> void:
 	var scale := _world_draw_scale()
 	draw_set_transform(_world_canvas_point(point), rotation, base_scale * scale)
+
+func _update_helicopter_audio() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if reinforcement_calls.is_empty():
+		if helicopter_audio_player != null and helicopter_audio_player.playing:
+			helicopter_audio_player.stop()
+		helicopter_audio_playback = null
+		return
+	if helicopter_audio_playback == null:
+		var stream := AudioStreamGenerator.new()
+		stream.mix_rate = 22050.0
+		stream.buffer_length = 0.5
+		helicopter_audio_player.stream = stream
+		helicopter_audio_player.play()
+		helicopter_audio_playback = helicopter_audio_player.get_stream_playback()
+	if helicopter_audio_playback == null:
+		return
+	var lead_call: Dictionary = reinforcement_calls.back()
+	var visible := int(lead_call.get("counter", 0)) >= REINFORCEMENT_SUSPENSE_TICKS
+	helicopter_audio_player.volume_db = -23.0 if not visible else -13.0
+	var frames := helicopter_audio_playback.get_frames_available()
+	for _frame in range(frames):
+		helicopter_audio_time += 1.0 / 22050.0
+		var rotor_chop := 0.30 + 0.70 * maxf(0.0, sin(helicopter_audio_time * TAU * 16.0))
+		var engine := sin(helicopter_audio_time * TAU * 34.0) * 0.14 + sin(helicopter_audio_time * TAU * 68.0) * 0.05
+		var sample := engine * rotor_chop
+		helicopter_audio_playback.push_frame(Vector2(sample, sample))
 
 func _dock_hit_bounds(dock: Dictionary) -> Rect2:
 	# EnemyDock's registration is its top-centre.  Unlike terrain, the original
@@ -2777,10 +2820,14 @@ func _draw_reinforcement_calls() -> void:
 	for call in reinforcement_calls:
 		var target: Vector2 = call.get("target", Vector2.ZERO)
 		var counter := int(call.get("counter", 0))
-		if counter < 165:
+		if counter < REINFORCEMENT_SUSPENSE_TICKS + 90:
 			var flare_top := target + Vector2(0.0, -minf(145.0, float(counter) * 2.1))
 			draw_line(target + Vector2(0.0, -7.0), flare_top, Color("#ff4f54"), 2.0)
 			draw_circle(flare_top, 4.0, Color("#ffd180"))
+		if counter < REINFORCEMENT_SUSPENSE_TICKS:
+			if interface_font != null and counter % 30 < 20:
+				draw_string(interface_font, target + Vector2(-40.0, -158.0), "REINFORCEMENTS INBOUND", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 9, Color("#ffd180"))
+			continue
 		var helicopter_position := _reinforcement_helicopter_position(call)
 		if helicopter != null:
 			draw_texture_rect(helicopter, Rect2(helicopter_position - REINFORCEMENT_HELICOPTER_SIZE * 0.5, REINFORCEMENT_HELICOPTER_SIZE), false)
