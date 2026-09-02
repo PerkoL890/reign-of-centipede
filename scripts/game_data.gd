@@ -217,10 +217,12 @@ const WEAPONS: Dictionary = {
 	},
 	"chaingun": {
 		"display_name": "Chaingun",
-		"power": 14,
+		# Deliberately brutal up close: each trigger pull throws a short burst,
+		# but Main.gd makes it increasingly inaccurate and kicks the shooter back.
+		"power": 18,
 		"s_rate": 2,
 		"cost": 1100,
-		"amount": 1,
+		"amount": 3,
 		"projectile_kind": "bullet",
 	},
 	"bazooka": {

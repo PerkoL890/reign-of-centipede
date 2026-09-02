@@ -227,6 +227,7 @@ var boss_audio_player: AudioStreamPlayer
 var boss_audio_playback: AudioStreamGeneratorPlayback
 var boss_audio_time := 0.0
 var boss_intro_ticks := 0
+var weapon_shake_ticks := 0
 var current_music_path := ""
 var current_music_pitch := 1.0
 var random := RandomNumberGenerator.new()
@@ -488,6 +489,7 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	explosions.clear()
 	reinforcement_calls.clear()
 	boss_intro_ticks = 0
+	weapon_shake_ticks = 0
 	_stop_boss_audio()
 	small_clouds.clear()
 	big_clouds.clear()
@@ -1125,6 +1127,7 @@ func _update_player() -> void:
 		return
 	player["muzzle_flash_ticks"] = maxi(0, int(player.get("muzzle_flash_ticks", 0)) - 1)
 	player["hurt_flash_ticks"] = maxi(0, int(player.get("hurt_flash_ticks", 0)) - 1)
+	weapon_shake_ticks = maxi(0, weapon_shake_ticks - 1)
 	ability_cooldown_ticks = maxi(0, ability_cooldown_ticks - 1)
 	ability_pulse_ticks = maxi(0, ability_pulse_ticks - 1)
 	if temporary_weapon_ticks > 0:
@@ -1242,13 +1245,18 @@ func _try_fire_player(moving: bool) -> void:
 	var pose := _player_weapon_pose(aim)
 	var position: Vector2 = pose.get("muzzle_position", player.get("pos", Vector2.ZERO))
 	var spread := _player_bullet_spread_degrees(moving, not bool(player.get("grounded", false)))
+	if equipped_weapon == "chaingun":
+		# It is an exceptionally powerful close-range weapon, not a precision gun.
+		# The wide cone and physical kick are its intended trade-off.
+		spread += 16.0
 	for pellet in range(int(weapon.get("amount", 1))):
 		var direction := aim.rotated(deg_to_rad(random.randf_range(-spread, spread)))
 		_create_bullet(position, direction * 20.0, int(weapon.get("power", 2)), "player")
 	if equipped_weapon == "chaingun":
-		var recoil := 1.05 if not bool(player.get("grounded", false)) else 0.55
+		var recoil := 5.2 if not bool(player.get("grounded", false)) else 3.8
 		player["vel"] = player.get("vel", Vector2.ZERO) - aim * recoil
-		if aim.y > 0.2:
+		weapon_shake_ticks = 5
+		if aim.y > 0.05:
 			player["grounded"] = false
 	shoot_counter = 0
 	player["muzzle_flash_ticks"] = 4
@@ -1547,6 +1555,10 @@ func _destroy_building(site: Dictionary) -> void:
 	_play_sound("explosion")
 
 func _create_friendly(position: Vector2, building_data: Dictionary, upgrade_level: int = 0) -> void:
+	# All reinforcement sources share this hard cap.  In particular, a helicopter
+	# now fills only vacant roster slots rather than adding ten defenders on top.
+	if friendlies.size() >= GameData.MAX_FRIENDLIES:
+		return
 	var home_surface := _friendly_home_surface(position)
 	if home_surface.has_area():
 		# A defender belongs to the grass platform carrying its building, rather
@@ -2269,11 +2281,15 @@ func _update_reinforcement_calls() -> void:
 		var target: Vector2 = call.get("target", Vector2.ZERO)
 		if counter == REINFORCEMENT_SUSPENSE_TICKS + 90 and not bool(call.get("dropped", false)):
 			var fighter_data: Dictionary = GameData.get_building("medium_shack")
+			var deployed := 0
 			for fighter_index in range(10):
+				if friendlies.size() >= GameData.MAX_FRIENDLIES:
+					break
 				var offset := (float(fighter_index) - 4.5) * 9.0
 				_create_friendly(target + Vector2(offset, -8.0), fighter_data, 0)
+				deployed += 1
 			call["dropped"] = true
-			_create_float_text("SQUAD DEPLOYED", target + Vector2(-28.0, -42.0))
+			_create_float_text("SQUAD DEPLOYED %d" % deployed, target + Vector2(-28.0, -42.0))
 			_play_sound("pickup")
 		if counter >= REINFORCEMENT_SUSPENSE_TICKS + REINFORCEMENT_VISIBLE_TICKS:
 			reinforcement_calls.remove_at(index)
@@ -2302,13 +2318,19 @@ func _world_draw_scale() -> float:
 
 func _world_draw_offset() -> Vector2:
 	var scale := _world_draw_scale()
+	var weapon_shake := Vector2.ZERO
+	if weapon_shake_ticks > 0:
+		weapon_shake = Vector2(
+			random.randf_range(-3.5, 3.5),
+			random.randf_range(-2.5, 2.5)
+		)
 	if is_equal_approx(scale, 1.0):
-		return -camera_position
+		return -camera_position + weapon_shake
 	# The spectacle zoom is still the player's camera: it widens the field of
 	# view without abandoning the player for the selected rubble site.
 	var focus: Vector2 = player.get("pos", reinforcement_calls.back().get("target", Vector2.ZERO)) + Vector2(0.0, -70.0)
 	var shake := Vector2(sin(float(simulation_tick) * 1.9) * 2.0, cos(float(simulation_tick) * 2.4) * 1.5)
-	return VIEW_SIZE * 0.5 - focus * scale + shake
+	return VIEW_SIZE * 0.5 - focus * scale + shake + weapon_shake
 
 func _world_canvas_point(point: Vector2) -> Vector2:
 	return _world_draw_offset() + point * _world_draw_scale()
@@ -2327,50 +2349,37 @@ func _update_helicopter_audio() -> void:
 	if reinforcement_calls.is_empty():
 		if helicopter_audio_player != null and helicopter_audio_player.playing:
 			helicopter_audio_player.stop()
-		helicopter_audio_playback = null
 		return
-	if helicopter_audio_player == null or not helicopter_audio_player.playing:
-		var stream := AudioStreamGenerator.new()
-		stream.mix_rate = 22050.0
-		stream.buffer_length = 0.5
-		helicopter_audio_player.stream = stream
+	if helicopter_audio_player == null:
+		return
+	if not helicopter_audio_player.playing:
+		var rotor_stream: AudioStream = load("res://assets/original/audio/rocket.mp3")
+		_configure_music_stream(rotor_stream)
+		helicopter_audio_player.stream = rotor_stream
+		helicopter_audio_player.pitch_scale = 0.42
 		helicopter_audio_player.play()
-		helicopter_audio_time = 0.0
-	if helicopter_audio_playback == null:
-		helicopter_audio_playback = helicopter_audio_player.get_stream_playback()
-	if helicopter_audio_playback == null:
-		return
 	var lead_call: Dictionary = reinforcement_calls.back()
 	var visible := int(lead_call.get("counter", 0)) >= REINFORCEMENT_SUSPENSE_TICKS
-	helicopter_audio_player.volume_db = -23.0 if not visible else -13.0
-	var frames := helicopter_audio_playback.get_frames_available()
-	for _frame in range(frames):
-		helicopter_audio_time += 1.0 / 22050.0
-		var rotor_chop := 0.30 + 0.70 * maxf(0.0, sin(helicopter_audio_time * TAU * 16.0))
-		var engine := sin(helicopter_audio_time * TAU * 34.0) * 0.14 + sin(helicopter_audio_time * TAU * 68.0) * 0.05
-		var sample := engine * rotor_chop
-		helicopter_audio_playback.push_frame(Vector2(sample, sample))
+	# Imported MP3 audio is reliable on the user's Windows build; the previous
+	# generated stream could start without a live playback buffer and be silent.
+	helicopter_audio_player.volume_db = -14.0 if not visible else -5.0
 
 func _start_boss_audio() -> void:
 	if DisplayServer.get_name() == "headless" or boss_audio_player == null:
 		return
 	music_player.volume_db = -20.0
 	if boss_audio_player.playing:
-		boss_audio_playback = boss_audio_player.get_stream_playback()
 		return
-	var stream := AudioStreamGenerator.new()
-	stream.mix_rate = 22050.0
-	stream.buffer_length = 0.5
-	boss_audio_player.stream = stream
-	boss_audio_player.volume_db = -10.0
+	var boss_stream: AudioStream = load("res://assets/original/audio/game.mp3")
+	_configure_music_stream(boss_stream)
+	boss_audio_player.stream = boss_stream
+	boss_audio_player.pitch_scale = 0.72
+	boss_audio_player.volume_db = -3.0
 	boss_audio_player.play()
-	boss_audio_playback = boss_audio_player.get_stream_playback()
-	boss_audio_time = 0.0
 
 func _stop_boss_audio() -> void:
 	if boss_audio_player != null:
 		boss_audio_player.stop()
-	boss_audio_playback = null
 	if music_player != null and mode == MODE_PLAY:
 		music_player.volume_db = -12.0
 
@@ -2378,27 +2387,11 @@ func _update_boss_audio() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	if not _rapid_boss_active():
-		if boss_audio_playback != null:
+		if boss_audio_player != null and boss_audio_player.playing:
 			_stop_boss_audio()
 		return
 	if boss_audio_player == null or not boss_audio_player.playing:
 		_start_boss_audio()
-	if boss_audio_playback == null and boss_audio_player != null:
-		boss_audio_playback = boss_audio_player.get_stream_playback()
-	if boss_audio_playback == null:
-		return
-	var notes := [49.0, 49.0, 58.27, 43.65, 49.0, 65.41, 58.27, 43.65]
-	var frames := boss_audio_playback.get_frames_available()
-	for _frame in range(frames):
-		boss_audio_time += 1.0 / 22050.0
-		var step := int(boss_audio_time * 2.0) % notes.size()
-		var frequency: float = notes[step]
-		var beat := pow(maxf(0.0, sin(boss_audio_time * TAU * 2.0)), 6.0)
-		var drone := sin(boss_audio_time * TAU * 24.5) * 0.10
-		var lead := sin(boss_audio_time * TAU * frequency) * (0.13 + beat * 0.08)
-		var harmonic := sin(boss_audio_time * TAU * frequency * 2.0) * 0.035
-		var sample := drone + lead + harmonic
-		boss_audio_playback.push_frame(Vector2(sample, sample))
 
 func _dock_hit_bounds(dock: Dictionary) -> Rect2:
 	# EnemyDock's registration is its top-centre.  Unlike terrain, the original

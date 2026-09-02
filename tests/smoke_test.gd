@@ -628,6 +628,12 @@ func _run() -> void:
 	for tick in range(90):
 		game._update_reinforcement_calls()
 	_expect(game.friendlies.size() == 10 and bool(game.reinforcement_calls[0].get("dropped", false)), "The transport should drop a ten-fighter squad at the chosen rubble site.")
+	# A full roster must stay full: reinforcements top it up, never exceed forty.
+	game.friendlies.clear()
+	for friendly_index in range(GameData.MAX_FRIENDLIES):
+		game.friendlies.append({"pos": Vector2.ZERO})
+	game._create_friendly(Vector2.ZERO, GameData.get_building("medium_shack"), 0)
+	_expect(game.friendlies.size() == GameData.MAX_FRIENDLIES, "No friendly source may exceed the forty-unit roster limit.")
 
 	# Field weapons use ordinary pickup gravity and settle on the platform rather
 	# than remaining suspended where their crate was destroyed.
