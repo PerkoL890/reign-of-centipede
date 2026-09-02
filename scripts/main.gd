@@ -1268,7 +1268,9 @@ func _player_bullet_spread_degrees(moving: bool, airborne: bool) -> float:
 	return GameData.STANDING_AIM_SPREAD_DEGREES
 
 func _update_player_aim(position: Vector2) -> void:
-	var mouse_world := get_viewport().get_mouse_position() + camera_position
+	var mouse_screen := get_viewport().get_mouse_position()
+	var zoom := _world_draw_scale()
+	var mouse_world := (mouse_screen - _world_draw_offset()) / zoom
 	var aim := mouse_world - position
 	if aim.length_squared() < 0.01:
 		return
@@ -1328,14 +1330,14 @@ func _draw_friendly_weapon(friendly: Dictionary, visual_position: Vector2) -> vo
 	# Keep the visual bob aligned with the friendly body while bullets retain the
 	# simulation's native hand origin.
 	pivot.y += visual_position.y - friendly.get("pos", visual_position).y
-	draw_set_transform(pivot - camera_position, float(pose.get("rotation", 0.0)), Vector2(float(pose.get("facing", 1.0)) * FRIENDLY_WEAPON_SCALE, FRIENDLY_WEAPON_SCALE))
+	_set_world_sprite_transform(pivot, float(pose.get("rotation", 0.0)), Vector2(float(pose.get("facing", 1.0)) * FRIENDLY_WEAPON_SCALE, FRIENDLY_WEAPON_SCALE))
 	draw_texture_rect(texture, PLAYER_WEAPON_DRAW_RECT, false)
 	var flash_ticks := int(friendly.get("muzzle_flash_ticks", 0))
 	var flash_texture := _load_texture("res://assets/original/player/muzzle_flash.png")
 	if flash_texture != null and flash_ticks > 0:
 		var flash_position: Vector2 = pose.get("flash_position", Vector2.ZERO)
 		draw_texture_rect(flash_texture, Rect2(flash_position - Vector2(2.0, 5.0), MUZZLE_FLASH_DRAW_SIZE), false, Color(1.0, 1.0, 1.0, 1.0 if flash_ticks >= 3 else 0.5))
-	draw_set_transform(-camera_position)
+	_set_world_draw_transform()
 
 func _build_or_repair() -> void:
 	var player_position: Vector2 = player.get("pos", Vector2.ZERO)
@@ -2245,7 +2247,7 @@ func _update_reinforcement_calls() -> void:
 		call["counter"] = int(call.get("counter", 0)) + 1
 		var counter := int(call.get("counter", 0))
 		var target: Vector2 = call.get("target", Vector2.ZERO)
-		if counter == 72 and not bool(call.get("dropped", false)):
+		if counter == 165 and not bool(call.get("dropped", false)):
 			var fighter_data: Dictionary = GameData.get_building("medium_shack")
 			for fighter_index in range(10):
 				var offset := (float(fighter_index) - 4.5) * 9.0
@@ -2253,10 +2255,41 @@ func _update_reinforcement_calls() -> void:
 			call["dropped"] = true
 			_create_float_text("SQUAD DEPLOYED", target + Vector2(-28.0, -42.0))
 			_play_sound("pickup")
-		if counter >= 150:
+		if counter >= 360:
 			reinforcement_calls.remove_at(index)
 		else:
 			reinforcement_calls[index] = call
+
+func _reinforcement_helicopter_position(call: Dictionary) -> Vector2:
+	var target: Vector2 = call.get("target", Vector2.ZERO)
+	var counter := int(call.get("counter", 0))
+	if counter < 105:
+		return target + Vector2(lerpf(-920.0, 0.0, float(counter) / 105.0), -220.0)
+	if counter < 225:
+		return target + Vector2(sin(float(counter - 105) * 0.07) * 18.0, -220.0)
+	return target + Vector2(lerpf(0.0, 920.0, float(counter - 225) / 135.0), -220.0)
+
+func _world_draw_scale() -> float:
+	return 0.58 if not reinforcement_calls.is_empty() else 1.0
+
+func _world_draw_offset() -> Vector2:
+	var scale := _world_draw_scale()
+	if is_equal_approx(scale, 1.0):
+		return -camera_position
+	var focus: Vector2 = reinforcement_calls.back().get("target", Vector2.ZERO) + Vector2(0.0, -180.0)
+	var shake := Vector2(sin(float(simulation_tick) * 1.9) * 2.0, cos(float(simulation_tick) * 2.4) * 1.5)
+	return VIEW_SIZE * 0.5 - focus * scale + shake
+
+func _world_canvas_point(point: Vector2) -> Vector2:
+	return _world_draw_offset() + point * _world_draw_scale()
+
+func _set_world_draw_transform() -> void:
+	var scale := _world_draw_scale()
+	draw_set_transform(_world_draw_offset(), 0.0, Vector2(scale, scale))
+
+func _set_world_sprite_transform(point: Vector2, rotation: float = 0.0, base_scale: Vector2 = Vector2.ONE) -> void:
+	var scale := _world_draw_scale()
+	draw_set_transform(_world_canvas_point(point), rotation, base_scale * scale)
 
 func _dock_hit_bounds(dock: Dictionary) -> Rect2:
 	# EnemyDock's registration is its top-centre.  Unlike terrain, the original
@@ -2610,7 +2643,7 @@ func _draw() -> void:
 	# important: this restores the missing atmosphere without distorting islands,
 	# docks, or collision geometry.
 	_draw_screen_backdrop()
-	draw_set_transform(-camera_position)
+	_set_world_draw_transform()
 	_draw_stage_backdrop()
 	_draw_pipes()
 	_draw_reinforcement_calls()
@@ -2744,27 +2777,26 @@ func _draw_reinforcement_calls() -> void:
 	for call in reinforcement_calls:
 		var target: Vector2 = call.get("target", Vector2.ZERO)
 		var counter := int(call.get("counter", 0))
-		if counter < 72:
+		if counter < 165:
 			var flare_top := target + Vector2(0.0, -minf(145.0, float(counter) * 2.1))
 			draw_line(target + Vector2(0.0, -7.0), flare_top, Color("#ff4f54"), 2.0)
 			draw_circle(flare_top, 4.0, Color("#ffd180"))
-		var progress := clampf(float(counter) / 150.0, 0.0, 1.0)
-		var helicopter_position := target + Vector2(lerpf(-720.0, 720.0, progress), -220.0)
+		var helicopter_position := _reinforcement_helicopter_position(call)
 		if helicopter != null:
 			draw_texture_rect(helicopter, Rect2(helicopter_position - REINFORCEMENT_HELICOPTER_SIZE * 0.5, REINFORCEMENT_HELICOPTER_SIZE), false)
-		_draw_helicopter_rotor(helicopter_position + Vector2(-245.0, -135.0), counter)
-		_draw_helicopter_rotor(helicopter_position + Vector2(250.0, -130.0), counter + 5)
+		_draw_helicopter_rotor(helicopter_position + Vector2(-245.0, -140.0), counter)
+		_draw_helicopter_rotor(helicopter_position + Vector2(250.0, -110.0), counter + 5)
 
 func _draw_helicopter_rotor(pivot: Vector2, counter: int) -> void:
 	# The body sprite deliberately contains rotor hubs but no blades. Keep the
 	# animated blur shallow (about 12 degrees) so it reads as a horizontal rotor,
 	# never as a front-facing aircraft propeller.
 	var angle := sin(float(counter) * 1.7) * 0.21
-	draw_set_transform(pivot - camera_position, angle, Vector2.ONE)
+	_set_world_sprite_transform(pivot, angle)
 	draw_line(Vector2(-205.0, -4.0), Vector2(205.0, -4.0), Color(0.18, 0.14, 0.08, 0.58), 7.0)
 	draw_line(Vector2(-205.0, 5.0), Vector2(205.0, 5.0), Color(0.42, 0.35, 0.19, 0.35), 3.0)
 	draw_circle(Vector2.ZERO, 11.0, Color("#161912"))
-	draw_set_transform(-camera_position)
+	_set_world_draw_transform()
 
 func _draw_buildings() -> void:
 	for index in range(buildings.size()):
@@ -2822,9 +2854,9 @@ func _draw_player() -> void:
 	if body_texture != null:
 		# DefineSprite 566's registration is at the body centre; the transparent
 		# export is 11x24 with its source origin at (5.5, 12.5).
-		draw_set_transform(position - camera_position, 0.0, Vector2(direction, 1.0))
+		_set_world_sprite_transform(position, 0.0, Vector2(direction, 1.0))
 		draw_texture_rect(body_texture, PLAYER_BODY_DRAW_RECT, false, player_tint)
-		draw_set_transform(-camera_position)
+		_set_world_draw_transform()
 	else:
 		draw_circle(position + Vector2(0, -10), 9.0, Color("#f8e7b0"))
 		draw_rect(Rect2(position + Vector2(-6, -10), Vector2(12, 18)), Color("#ff8d43"))
@@ -2836,7 +2868,7 @@ func _draw_player() -> void:
 		var weapon_pivot: Vector2 = weapon_pose.get("pivot", position + PLAYER_WEAPON_PIVOT)
 		var weapon_rotation := float(weapon_pose.get("rotation", 0.0))
 		var weapon_facing := float(weapon_pose.get("facing", direction))
-		draw_set_transform(weapon_pivot - camera_position, weapon_rotation, Vector2(weapon_facing, 1.0))
+		_set_world_sprite_transform(weapon_pivot, weapon_rotation, Vector2(weapon_facing, 1.0))
 		# DefineSprite 338 stays a distinct child of Player and rotates around its
 		# own recovered registration point rather than being a static body overlay.
 		draw_texture_rect(weapon_texture, PLAYER_WEAPON_DRAW_RECT, false, player_tint)
@@ -2847,7 +2879,7 @@ func _draw_player() -> void:
 			var flash_alpha := 1.0 if flash_ticks >= 3 else float(flash_ticks) * 0.5
 			var flash_rect := Rect2(flash_position - Vector2(2.0, 5.0), MUZZLE_FLASH_DRAW_SIZE)
 			draw_texture_rect(flash_texture, flash_rect, false, Color(1.0, 1.0, 1.0, flash_alpha))
-		draw_set_transform(-camera_position)
+		_set_world_draw_transform()
 	if interface_font != null:
 		draw_string(interface_font, position + Vector2(-10.0, -20.0), "YOU", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 8, Color("#eefad7"))
 	_draw_health_bar(position + Vector2(-17, -PLAYER_COLLISION_HALF_HEIGHT - 10), 34.0, float(player.get("health", 0.0)) / GameData.PLAYER_MAX_HEALTH, Color("#8eea8f"))
@@ -2877,9 +2909,9 @@ func _draw_enemies() -> void:
 		if wrapper_texture != null:
 			# Do not squash the parent frames. DefineSprite 262's shared canvas
 			# preserves per-enemy nested offsets and is drawn at native 1:1 scale.
-			draw_set_transform(position - camera_position, 0.0, Vector2(float(enemy.get("move_dir", 1.0)), 1.0))
+			_set_world_sprite_transform(position, 0.0, Vector2(float(enemy.get("move_dir", 1.0)), 1.0))
 			draw_texture_rect(wrapper_texture, Rect2(-ENEMY_WRAPPER_REGISTRATION, ENEMY_WRAPPER_SIZE), false, enemy_tint)
-			draw_set_transform(-camera_position)
+			_set_world_draw_transform()
 		else:
 			var texture := _load_texture(_enemy_texture_path(enemy_id))
 			if texture != null:
@@ -2919,9 +2951,9 @@ func _draw_friendlies() -> void:
 		var bob := -absf(sin(float(friendly.get("counter", 0)) * 0.78)) if walking else 0.0
 		var position: Vector2 = friendly.get("pos", Vector2.ZERO) + Vector2(0.0, bob)
 		if texture != null:
-			draw_set_transform(position - camera_position, 0.0, Vector2(float(friendly.get("facing", 1.0)), 1.0))
+			_set_world_sprite_transform(position, 0.0, Vector2(float(friendly.get("facing", 1.0)), 1.0))
 			draw_texture_rect(texture, Rect2(-Vector2(13, 24), Vector2(26, 24)), false)
-			draw_set_transform(-camera_position)
+			_set_world_draw_transform()
 		else:
 			draw_circle(position, 8.0, Color("#ffe5a2"))
 		_draw_health_bar(position + Vector2(-10, -31), 20.0, float(friendly.get("health", 0.0)) / maxf(float(friendly.get("max_health", GameData.FRIENDLY_TOTAL_HEALTH)), 1.0), Color("#8eea8f"))
@@ -2945,9 +2977,9 @@ func _draw_smoke() -> void:
 	for smoke in smokes:
 		var position: Vector2 = smoke.get("pos", Vector2.ZERO)
 		var scale := float(smoke.get("scale", SMOKE_INITIAL_SCALE))
-		draw_set_transform(position - camera_position, 0.0, Vector2(scale, scale))
+		_set_world_sprite_transform(position, 0.0, Vector2(scale, scale))
 		draw_texture(texture, Vector2.ZERO, Color(0.82, 0.94, 0.82, float(smoke.get("alpha", 1.0))))
-		draw_set_transform(-camera_position)
+		_set_world_draw_transform()
 
 func _draw_rubble_dust(origin: Vector2, seed: int) -> void:
 	for puff_index in range(3):
@@ -2972,9 +3004,9 @@ func _draw_bullets() -> void:
 				# MissileData is a 12x5 horizontal source bitmap. Rotate its native
 				# centre around the live projectile direction instead of forcing it
 				# into the 8x8 bullet rect.
-				draw_set_transform(position - camera_position, rotation)
+				_set_world_sprite_transform(position, rotation)
 				draw_texture_rect(texture, Rect2(-6.0, -2.5, 12.0, 5.0), false)
-				draw_set_transform(-camera_position)
+				_set_world_draw_transform()
 			else:
 				draw_texture_rect(texture, Rect2(position - Vector2(4, 4), Vector2(8, 8)), false)
 		else:
@@ -2995,9 +3027,9 @@ func _draw_lasers() -> void:
 		var texture := _load_texture("res://assets/original/pickups/lazer.png")
 		if texture != null:
 			var facing := -1.0 if velocity.x < 0.0 else 1.0
-			draw_set_transform(position - camera_position, 0.0, Vector2(facing, 1.0))
+			_set_world_sprite_transform(position, 0.0, Vector2(facing, 1.0))
 			draw_texture_rect(texture, Rect2(Vector2(0.0, -GameData.LASER_SIZE.y * 0.5), GameData.LASER_SIZE), false)
-			draw_set_transform(-camera_position)
+			_set_world_draw_transform()
 		else:
 			draw_rect(_laser_hit_bounds(laser), Color("#7effff"))
 
