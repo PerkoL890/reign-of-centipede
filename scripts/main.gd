@@ -698,7 +698,7 @@ func _show_build_menu() -> void:
 	_add_label("Choose a blueprint for the selected rubble site. Hold S or Down to construct it.", Vector2(42, 73), Vector2(566, 28), 12, Color("#b8d4be"), HORIZONTAL_ALIGNMENT_CENTER)
 	var first_row_y := 120.0
 	if game_mode == GAME_MODE_RAPID_ASSAULT:
-		_add_button("REINFORCEMENT DROP  $%d\nFire a flare; a giant transport drops three fighters here." % REINFORCEMENT_DROP_COST, Vector2(60, 105), Vector2(520, 48), _call_reinforcements.bind(building_menu_site_index), 12)
+		_add_button("REINFORCEMENT DROP  $%d\nFire a flare; a giant transport drops ten fighters here." % REINFORCEMENT_DROP_COST, Vector2(60, 105), Vector2(520, 48), _call_reinforcements.bind(building_menu_site_index), 12)
 		first_row_y = 165.0
 	var ids: Array = GameData.BUILDING_PURCHASE_ORDER
 	for index in range(ids.size()):
@@ -2247,7 +2247,8 @@ func _update_reinforcement_calls() -> void:
 		var target: Vector2 = call.get("target", Vector2.ZERO)
 		if counter == 72 and not bool(call.get("dropped", false)):
 			var fighter_data: Dictionary = GameData.get_building("medium_shack")
-			for offset in [-22.0, 0.0, 22.0]:
+			for fighter_index in range(10):
+				var offset := (float(fighter_index) - 4.5) * 9.0
 				_create_friendly(target + Vector2(offset, -8.0), fighter_data, 0)
 			call["dropped"] = true
 			_create_float_text("SQUAD DEPLOYED", target + Vector2(-28.0, -42.0))

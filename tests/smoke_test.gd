@@ -621,7 +621,7 @@ func _run() -> void:
 	_expect(game.reinforcement_calls.size() == 1 and game.money == 500 - game.REINFORCEMENT_DROP_COST, "A Rapid Assault reinforcement call should spend its fixed cost and create a transport event.")
 	for tick in range(72):
 		game._update_reinforcement_calls()
-	_expect(game.friendlies.size() == 3 and bool(game.reinforcement_calls[0].get("dropped", false)), "The transport should drop a three-fighter squad at the chosen rubble site.")
+	_expect(game.friendlies.size() == 10 and bool(game.reinforcement_calls[0].get("dropped", false)), "The transport should drop a ten-fighter squad at the chosen rubble site.")
 
 	# Enemy visuals use the original parent wrapper frames at their native scale,
 	# not the old hand-authored 24/42/48px substitute rectangles.
