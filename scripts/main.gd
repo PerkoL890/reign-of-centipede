@@ -2740,7 +2740,7 @@ func _draw_pipes() -> void:
 			draw_rect(bounds, Color("#a6f4e1"), false, 1.0)
 
 func _draw_reinforcement_calls() -> void:
-	var helicopter := _load_texture("res://assets/generated/reinforcement_helicopter.png")
+	var helicopter := _load_texture("res://assets/generated/reinforcement_helicopter_body.png")
 	for call in reinforcement_calls:
 		var target: Vector2 = call.get("target", Vector2.ZERO)
 		var counter := int(call.get("counter", 0))
@@ -2756,11 +2756,13 @@ func _draw_reinforcement_calls() -> void:
 		_draw_helicopter_rotor(helicopter_position + Vector2(250.0, -130.0), counter + 5)
 
 func _draw_helicopter_rotor(pivot: Vector2, counter: int) -> void:
-	# The generated transport has its large fixed rotor artwork; these rapidly
-	# rotating translucent blades sit over it to make the arrival read as live.
-	draw_set_transform(pivot - camera_position, float(counter) * 0.82, Vector2.ONE)
-	draw_line(Vector2(-175.0, 0.0), Vector2(175.0, 0.0), Color(0.18, 0.14, 0.08, 0.55), 8.0)
-	draw_line(Vector2(0.0, -175.0), Vector2(0.0, 175.0), Color(0.18, 0.14, 0.08, 0.32), 4.0)
+	# The body sprite deliberately contains rotor hubs but no blades. Keep the
+	# animated blur shallow (about 12 degrees) so it reads as a horizontal rotor,
+	# never as a front-facing aircraft propeller.
+	var angle := sin(float(counter) * 1.7) * 0.21
+	draw_set_transform(pivot - camera_position, angle, Vector2.ONE)
+	draw_line(Vector2(-205.0, -4.0), Vector2(205.0, -4.0), Color(0.18, 0.14, 0.08, 0.58), 7.0)
+	draw_line(Vector2(-205.0, 5.0), Vector2(205.0, 5.0), Color(0.42, 0.35, 0.19, 0.35), 3.0)
 	draw_circle(Vector2.ZERO, 11.0, Color("#161912"))
 	draw_set_transform(-camera_position)
 
@@ -3102,6 +3104,15 @@ func _load_texture(path: String) -> Texture2D:
 	if texture_cache.has(path):
 		return texture_cache[path]
 	if not ResourceLoader.exists(path):
+		# A generated PNG can be copied into the project while the editor is
+		# running. Fall back to a direct image load until Godot finishes importing
+		# it, rather than rendering only dependent procedural effects.
+		if path.ends_with(".png"):
+			var image := Image.load_from_file(path)
+			if image != null and not image.is_empty():
+				var direct_texture := ImageTexture.create_from_image(image)
+				texture_cache[path] = direct_texture
+				return direct_texture
 		return null
 	var resource := load(path)
 	if resource is Texture2D:

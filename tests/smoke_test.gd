@@ -619,6 +619,8 @@ func _run() -> void:
 	game.money = 500
 	game._call_reinforcements(0)
 	_expect(game.reinforcement_calls.size() == 1 and game.money == 500 - game.REINFORCEMENT_DROP_COST, "A Rapid Assault reinforcement call should spend its fixed cost and create a transport event.")
+	var helicopter_texture: Texture2D = game._load_texture("res://assets/generated/reinforcement_helicopter_body.png")
+	_expect(helicopter_texture != null, "The reinforcement helicopter body texture should load even before editor-side PNG import completes.")
 	for tick in range(72):
 		game._update_reinforcement_calls()
 	_expect(game.friendlies.size() == 10 and bool(game.reinforcement_calls[0].get("dropped", false)), "The transport should drop a ten-fighter squad at the chosen rubble site.")
