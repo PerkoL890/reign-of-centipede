@@ -634,12 +634,12 @@ func _run() -> void:
 		game.friendlies.append({"pos": Vector2.ZERO})
 	game._create_friendly(Vector2.ZERO, GameData.get_building("medium_shack"), 0)
 	_expect(game.friendlies.size() == GameData.MAX_FRIENDLIES, "No friendly source may exceed the forty-unit roster limit.")
-	game.hearts.clear()
+	game.friendlies.clear()
 	game.weapon_pickups.clear()
 	game._deploy_flare_support(Vector2.ZERO, "medical")
-	_expect(game.hearts.size() == 6, "The MedEvac flare option should deliver six collectible medkits.")
+	_expect(game.friendlies.size() == 3 and bool(game.friendlies[0].get("parachuting", false)), "The MedEvac flare option should deploy three parachuting nurses.")
 	game._deploy_flare_support(Vector2.ZERO, "arsenal")
-	_expect(game.weapon_pickups.size() == 3, "The Arsenal flare option should deliver three weapon cases.")
+	_expect(game.weapon_pickups.size() == 1 and bool(game.weapon_pickups[0].get("permanent", false)), "The Arsenal flare option should deliver one permanent armory cache.")
 
 	# Field weapons use ordinary pickup gravity and settle on the platform rather
 	# than remaining suspended where their crate was destroyed.

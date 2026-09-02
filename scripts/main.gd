@@ -726,14 +726,16 @@ func _show_build_menu() -> void:
 	_add_label("Choose a blueprint for the selected rubble site. Hold S or Down to construct it.", Vector2(42, 73), Vector2(566, 28), 12, Color("#b8d4be"), HORIZONTAL_ALIGNMENT_CENTER)
 	var first_row_y := 120.0
 	if game_mode == GAME_MODE_RAPID_ASSAULT:
-		_add_label("FLARE STATION — call support before selecting a building blueprint.", Vector2(35, 75), Vector2(580, 20), 11, Color("#ffd180"), HORIZONTAL_ALIGNMENT_CENTER)
+		_add_title("FLARE STATION", Vector2(112, 30), Vector2(426, 35), 24, Color("#ffd180"))
+		_add_label("Rapid Assault uses field support only — buildings are unavailable.", Vector2(35, 75), Vector2(580, 20), 11, Color("#ffd180"), HORIZONTAL_ALIGNMENT_CENTER)
 		var option_ids := ["squad", "medical", "arsenal"]
 		for option_index in range(option_ids.size()):
 			var option_id: String = option_ids[option_index]
 			var option: Dictionary = RAPID_FLARE_OPTIONS[option_id]
 			var caption := "%s  $%d\n%s" % [option.get("title", option_id), int(option.get("cost", 0)), option.get("description", "")]
-			_add_button(caption, Vector2(30 + option_index * 198, 100), Vector2(190, 60), _call_reinforcements.bind(building_menu_site_index, option_id), 9)
-		first_row_y = 185.0
+			_add_button(caption, Vector2(30 + option_index * 198, 135), Vector2(190, 60), _call_reinforcements.bind(building_menu_site_index, option_id), 9)
+		_add_button("CLOSE", Vector2(235, 408), Vector2(180, 28), _close_building_menu, 13)
+		return
 	var ids: Array = GameData.BUILDING_PURCHASE_ORDER
 	for index in range(ids.size()):
 		var building_id: String = ids[index]
@@ -1275,9 +1277,12 @@ func _try_fire_player(moving: bool) -> void:
 		# It is an exceptionally powerful close-range weapon, not a precision gun.
 		# The wide cone and physical kick are its intended trade-off.
 		spread += 16.0
+	var weapon_power := int(weapon.get("power", 2))
+	if equipped_weapon == "chaingun" and (game_mode == GAME_MODE_FAITHFUL or game_mode == GAME_MODE_SETTLEMENT_DEFENSE):
+		weapon_power = 14
 	for pellet in range(int(weapon.get("amount", 1))):
 		var direction := aim.rotated(deg_to_rad(random.randf_range(-spread, spread)))
-		_create_bullet(position, direction * 20.0, int(weapon.get("power", 2)), "player")
+		_create_bullet(position, direction * 20.0, weapon_power, "player")
 	if equipped_weapon == "chaingun":
 		# Keep the kick direction circular/angle-independent. Vertical momentum
 		# must be capped, though: unlike horizontal ground motion it otherwise
@@ -1586,13 +1591,13 @@ func _destroy_building(site: Dictionary) -> void:
 	_set_status("A building was destroyed and returned to rubble.")
 	_play_sound("explosion")
 
-func _create_friendly(position: Vector2, building_data: Dictionary, upgrade_level: int = 0) -> void:
+func _create_friendly(position: Vector2, building_data: Dictionary, upgrade_level: int = 0, airdrop: bool = false) -> void:
 	# All reinforcement sources share this hard cap.  In particular, a helicopter
 	# now fills only vacant roster slots rather than adding ten defenders on top.
 	if friendlies.size() >= GameData.MAX_FRIENDLIES:
 		return
 	var home_surface := _friendly_home_surface(position)
-	if home_surface.has_area():
+	if home_surface.has_area() and not airdrop:
 		# A defender belongs to the grass platform carrying its building, rather
 		# than to the global nearest-ground query.  This prevents several towers
 		# from visually collapsing their defenders onto one shared island.
@@ -1617,6 +1622,7 @@ func _create_friendly(position: Vector2, building_data: Dictionary, upgrade_leve
 		"muzzle_flash_ticks": 0,
 		"heal_flash_ticks": 0,
 		"fall_velocity": 0.0,
+		"parachuting": airdrop,
 	})
 
 func _update_friendlies() -> void:
@@ -1630,6 +1636,16 @@ func _update_friendlies() -> void:
 		friendly["muzzle_flash_ticks"] = maxi(0, int(friendly.get("muzzle_flash_ticks", 0)) - 1)
 		friendly["heal_flash_ticks"] = maxi(0, int(friendly.get("heal_flash_ticks", 0)) - 1)
 		friendly["has_target"] = false
+		if bool(friendly.get("parachuting", false)):
+			var landing_position: Vector2 = friendly.get("pos", Vector2.ZERO) + Vector2(0.0, 1.15)
+			var landing_y := _ground_y_at(landing_position.x, friendly.get("pos", landing_position).y, 0.0)
+			if is_finite(landing_y) and landing_position.y >= landing_y:
+				landing_position.y = landing_y
+				friendly["parachuting"] = false
+				friendly["home_surface"] = _friendly_home_surface(landing_position)
+			friendly["pos"] = landing_position
+			friendlies[index] = friendly
+			continue
 		var role := str(friendly.get("role", "fighter"))
 		if role == "fighter":
 			_update_fighter(friendly)
@@ -2268,8 +2284,9 @@ func _bullet_hit(bullet: Dictionary) -> bool:
 				var distance := position.distance_to(bullet.get("origin", position))
 				damage *= clampf(1.0 - distance / 260.0, 0.35, 1.0)
 			enemy["health"] = float(enemy.get("health", 0.0)) - damage
-			if weapon_id == "flamer":
-				enemy["burn_stacks"] = mini(FLAMER_BURN_MAX_STACKS, int(enemy.get("burn_stacks", 0)) + 1)
+			if weapon_id == "flamer" and game_mode != GAME_MODE_FAITHFUL:
+				var burn_cap := 6 if game_mode == GAME_MODE_SETTLEMENT_DEFENSE else FLAMER_BURN_MAX_STACKS
+				enemy["burn_stacks"] = mini(burn_cap, int(enemy.get("burn_stacks", 0)) + 1)
 				enemy["burn_ticks"] = FLAMER_BURN_DURATION_TICKS
 			enemies[index] = enemy
 			score += 1
@@ -2310,7 +2327,7 @@ func _create_bazooka_explosion(position: Vector2, direct_enemy_index: int = -1) 
 		var falloff := 1.0 - distance / BAZOOKA_EXPLOSION_RADIUS
 		var explosion_damage := BAZOOKA_EXPLOSION_DAMAGE * (0.35 + falloff * 0.65)
 		if index == direct_enemy_index:
-			explosion_damage = BAZOOKA_DIRECT_HIT_DAMAGE
+			explosion_damage = BAZOOKA_DIRECT_HIT_DAMAGE if game_mode == GAME_MODE_RAPID_ASSAULT or game_mode == GAME_MODE_CLASSIC_SURVIVAL else BAZOOKA_EXPLOSION_DAMAGE
 		enemy["health"] = float(enemy.get("health", 0.0)) - explosion_damage
 		if distance > 0.1:
 			enemy["pos"] = enemy.get("pos", Vector2.ZERO) + offset.normalized() * (8.0 + falloff * 22.0)
@@ -2340,8 +2357,10 @@ func _update_reinforcement_calls() -> void:
 		call["counter"] = int(call.get("counter", 0)) + 1
 		var counter := int(call.get("counter", 0))
 		var target: Vector2 = call.get("target", Vector2.ZERO)
-		if counter == REINFORCEMENT_SUSPENSE_TICKS + 90 and not bool(call.get("dropped", false)):
-			_deploy_flare_support(target, str(call.get("support_type", "squad")))
+		var support_type := str(call.get("support_type", "squad"))
+		var drop_tick := REINFORCEMENT_SUSPENSE_TICKS + (90 if support_type == "squad" else 180)
+		if counter == drop_tick and not bool(call.get("dropped", false)):
+			_deploy_flare_support(target, support_type)
 			call["dropped"] = true
 		if counter >= REINFORCEMENT_SUSPENSE_TICKS + REINFORCEMENT_VISIBLE_TICKS:
 			reinforcement_calls.remove_at(index)
@@ -2351,13 +2370,17 @@ func _update_reinforcement_calls() -> void:
 
 func _deploy_flare_support(target: Vector2, support_type: String) -> void:
 	if support_type == "medical":
-		for medkit_index in range(6):
-			_create_heart(target + Vector2((float(medkit_index) - 2.5) * 13.0, -25.0 - float(medkit_index % 2) * 12.0))
-		_create_float_text("MEDKITS DEPLOYED", target + Vector2(-33.0, -42.0))
+		var nurse_data: Dictionary = GameData.get_building("hospital")
+		var deployed := 0
+		for nurse_index in range(3):
+			if friendlies.size() >= GameData.MAX_FRIENDLIES:
+				break
+			_create_friendly(target + Vector2((float(nurse_index) - 1.0) * 24.0, -155.0 - nurse_index * 18.0), nurse_data, 0, true)
+			deployed += 1
+		_create_float_text("NURSES DEPLOYED %d" % deployed, target + Vector2(-42.0, -42.0))
 	elif support_type == "arsenal":
-		for case_index in range(3):
-			_create_weapon_pickup(target + Vector2((float(case_index) - 1.0) * 23.0, -28.0))
-		_create_float_text("WEAPON CASES DEPLOYED", target + Vector2(-48.0, -42.0))
+		_create_armory_cache(target + Vector2(0.0, -35.0))
+		_create_float_text("ARMORY CACHE DEPLOYED", target + Vector2(-48.0, -42.0))
 	else:
 		var fighter_data: Dictionary = GameData.get_building("medium_shack")
 		var deployed := 0
@@ -2374,6 +2397,10 @@ func _reinforcement_helicopter_position(call: Dictionary) -> Vector2:
 	var target: Vector2 = call.get("target", Vector2.ZERO)
 	var counter := int(call.get("counter", 0))
 	var visible_counter := counter - REINFORCEMENT_SUSPENSE_TICKS
+	if str(call.get("support_type", "squad")) != "squad":
+		# Aircraft make one continuous pass across the battlefield; only the troop
+		# transport hovers above its rope drop.
+		return target + Vector2(lerpf(-1020.0, 1020.0, clampf(float(visible_counter) / float(REINFORCEMENT_VISIBLE_TICKS), 0.0, 1.0)), -220.0)
 	if visible_counter < 75:
 		return target + Vector2(lerpf(-920.0, 0.0, float(visible_counter) / 75.0), -220.0)
 	if visible_counter < 285:
@@ -2607,6 +2634,17 @@ func _create_weapon_pickup(position: Vector2) -> void:
 		"counter": 0,
 	})
 
+func _create_armory_cache(position: Vector2) -> void:
+	# One permanent unlock is valuable even when the player already has a strong
+	# temporary field weapon; it never auto-equips and never causes three swaps.
+	var arsenal_order := ["bazooka", "chaingun", "flamer", "aug", "p90", "auto_shotgun", "m16"]
+	for weapon_id in arsenal_order:
+		if not purchased_weapons.has(weapon_id):
+			weapon_pickups.append({"pos": position, "vel": Vector2(0.0, -5.0), "weapon_id": weapon_id, "counter": 0, "permanent": true})
+			return
+	_create_coin(position, 300)
+	_set_status("Armory cache converted to $300: every weapon is already owned.")
+
 func _create_box(position: Vector2, floating: bool = false, balloon_id: int = -1) -> void:
 	boxes.append({
 		"pos": position,
@@ -2701,6 +2739,13 @@ func _update_pickups() -> void:
 		pickup["pos"] = pickup_position
 		pickup["vel"] = pickup_velocity
 		if pickup_position.distance_to(player.get("pos", Vector2.ZERO)) < 22.0:
+			if bool(pickup.get("permanent", false)):
+				var unlocked_weapon := str(pickup.get("weapon_id", "shotgun"))
+				purchased_weapons[unlocked_weapon] = true
+				_create_float_text("%s UNLOCKED" % GameData.get_weapon(unlocked_weapon).get("display_name", unlocked_weapon), pickup_position)
+				weapon_pickups.remove_at(index)
+				_play_sound("pickup")
+				continue
 			if temporary_weapon_ticks <= 0:
 				field_weapon_return_id = equipped_weapon
 			temporary_weapon_id = str(pickup.get("weapon_id", "shotgun"))
@@ -3195,6 +3240,10 @@ func _draw_friendlies() -> void:
 			_set_world_draw_transform()
 		else:
 			draw_circle(position, 8.0, Color("#ffe5a2"))
+		if bool(friendly.get("parachuting", false)):
+			draw_arc(position + Vector2(0.0, -30.0), 14.0, PI, TAU, 12, Color("#edf5dd"), 2.0)
+			draw_line(position + Vector2(-13.0, -30.0), position + Vector2(-5.0, -8.0), Color("#d5e0cc"), 1.0)
+			draw_line(position + Vector2(13.0, -30.0), position + Vector2(5.0, -8.0), Color("#d5e0cc"), 1.0)
 		_draw_health_bar(position + Vector2(-10, -31), 20.0, float(friendly.get("health", 0.0)) / maxf(float(friendly.get("max_health", GameData.FRIENDLY_TOTAL_HEALTH)), 1.0), Color("#8eea8f"))
 		if int(friendly.get("heal_flash_ticks", 0)) > 0:
 			draw_arc(position + Vector2(0.0, -11.0), 14.0, 0.0, TAU, 16, Color("#9affb4"), 1.3)
