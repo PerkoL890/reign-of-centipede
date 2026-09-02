@@ -228,6 +228,7 @@ var boss_audio_playback: AudioStreamGeneratorPlayback
 var boss_audio_time := 0.0
 var boss_intro_ticks := 0
 var weapon_shake_ticks := 0
+var chaingun_ground_recoil := 0.0
 var current_music_path := ""
 var current_music_pitch := 1.0
 var random := RandomNumberGenerator.new()
@@ -490,6 +491,7 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	reinforcement_calls.clear()
 	boss_intro_ticks = 0
 	weapon_shake_ticks = 0
+	chaingun_ground_recoil = 0.0
 	_stop_boss_audio()
 	small_clouds.clear()
 	big_clouds.clear()
@@ -1156,6 +1158,11 @@ func _update_player() -> void:
 		moving = true
 	else:
 		velocity.x = 0.0
+	# Horizontal velocity is ordinarily written directly from the input each
+	# tick. Preserve the Chaingun's backwards impulse separately so it still
+	# drags a grounded player backwards while they attempt to walk into the fire.
+	velocity.x += chaingun_ground_recoil
+	chaingun_ground_recoil = move_toward(chaingun_ground_recoil, 0.0, 0.75)
 	if jump_key_down and not jump_key_was_down and bool(player.get("grounded", false)):
 		velocity.y = -11.0
 		player["grounded"] = false
@@ -1255,6 +1262,7 @@ func _try_fire_player(moving: bool) -> void:
 	if equipped_weapon == "chaingun":
 		var recoil := 5.2 if not bool(player.get("grounded", false)) else 3.8
 		player["vel"] = player.get("vel", Vector2.ZERO) - aim * recoil
+		chaingun_ground_recoil = -aim.x * 6.5
 		weapon_shake_ticks = 5
 		if aim.y > 0.05:
 			player["grounded"] = false
