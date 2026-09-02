@@ -2304,7 +2304,9 @@ func _world_draw_offset() -> Vector2:
 	var scale := _world_draw_scale()
 	if is_equal_approx(scale, 1.0):
 		return -camera_position
-	var focus: Vector2 = reinforcement_calls.back().get("target", Vector2.ZERO) + Vector2(0.0, -180.0)
+	# The spectacle zoom is still the player's camera: it widens the field of
+	# view without abandoning the player for the selected rubble site.
+	var focus: Vector2 = player.get("pos", reinforcement_calls.back().get("target", Vector2.ZERO)) + Vector2(0.0, -70.0)
 	var shake := Vector2(sin(float(simulation_tick) * 1.9) * 2.0, cos(float(simulation_tick) * 2.4) * 1.5)
 	return VIEW_SIZE * 0.5 - focus * scale + shake
 
@@ -2327,12 +2329,14 @@ func _update_helicopter_audio() -> void:
 			helicopter_audio_player.stop()
 		helicopter_audio_playback = null
 		return
-	if helicopter_audio_playback == null:
+	if helicopter_audio_player == null or not helicopter_audio_player.playing:
 		var stream := AudioStreamGenerator.new()
 		stream.mix_rate = 22050.0
 		stream.buffer_length = 0.5
 		helicopter_audio_player.stream = stream
 		helicopter_audio_player.play()
+		helicopter_audio_time = 0.0
+	if helicopter_audio_playback == null:
 		helicopter_audio_playback = helicopter_audio_player.get_stream_playback()
 	if helicopter_audio_playback == null:
 		return
@@ -2351,6 +2355,9 @@ func _start_boss_audio() -> void:
 	if DisplayServer.get_name() == "headless" or boss_audio_player == null:
 		return
 	music_player.volume_db = -20.0
+	if boss_audio_player.playing:
+		boss_audio_playback = boss_audio_player.get_stream_playback()
+		return
 	var stream := AudioStreamGenerator.new()
 	stream.mix_rate = 22050.0
 	stream.buffer_length = 0.5
@@ -2374,8 +2381,11 @@ func _update_boss_audio() -> void:
 		if boss_audio_playback != null:
 			_stop_boss_audio()
 		return
-	if boss_audio_playback == null:
+	if boss_audio_player == null or not boss_audio_player.playing:
 		_start_boss_audio()
+	if boss_audio_playback == null and boss_audio_player != null:
+		boss_audio_playback = boss_audio_player.get_stream_playback()
+	if boss_audio_playback == null:
 		return
 	var notes := [49.0, 49.0, 58.27, 43.65, 49.0, 65.41, 58.27, 43.65]
 	var frames := boss_audio_playback.get_frames_available()
