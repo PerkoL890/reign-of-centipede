@@ -223,6 +223,10 @@ var music_player: AudioStreamPlayer
 var helicopter_audio_player: AudioStreamPlayer
 var helicopter_audio_playback: AudioStreamGeneratorPlayback
 var helicopter_audio_time := 0.0
+var boss_audio_player: AudioStreamPlayer
+var boss_audio_playback: AudioStreamGeneratorPlayback
+var boss_audio_time := 0.0
+var boss_intro_ticks := 0
 var current_music_path := ""
 var current_music_pitch := 1.0
 var random := RandomNumberGenerator.new()
@@ -261,6 +265,8 @@ func _ready() -> void:
 	music_player.finished.connect(_restart_music_if_needed)
 	helicopter_audio_player = AudioStreamPlayer.new()
 	add_child(helicopter_audio_player)
+	boss_audio_player = AudioStreamPlayer.new()
+	add_child(boss_audio_player)
 	_show_main_menu()
 	if cheats_available:
 		call_deferred("_show_cheat_menu")
@@ -481,6 +487,8 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	smokes.clear()
 	explosions.clear()
 	reinforcement_calls.clear()
+	boss_intro_ticks = 0
+	_stop_boss_audio()
 	small_clouds.clear()
 	big_clouds.clear()
 	_initialize_clouds()
@@ -1001,6 +1009,8 @@ func _tick() -> void:
 	_update_lasers()
 	_update_explosions()
 	_update_reinforcement_calls()
+	boss_intro_ticks = maxi(0, boss_intro_ticks - 1)
+	_update_boss_audio()
 	_update_smoke()
 	_update_clouds()
 	_update_pickups()
@@ -1100,6 +1110,8 @@ func _spawn_rapid_assault_boss() -> void:
 	boss["boss_phase"] = 0
 	boss["boss_deployed_docks"] = false
 	enemies[enemies.size() - 1] = boss
+	boss_intro_ticks = 150
+	_start_boss_audio()
 	_set_status("WAVE %d BOSS — CENTIPEDE OVERSEER. Destroy docks to cut reinforcements." % wave)
 	_play_sound("explosion")
 
@@ -2046,6 +2058,7 @@ func _kill_enemy(index: int) -> void:
 		money += 300
 		score += 2500
 		_create_float_text("OVERSEER DESTROYED +$300", position + Vector2(-52.0, -45.0), true)
+		_stop_boss_audio()
 		_finish_stage(true)
 
 func _create_dock(dock_id: String, enemy_id: String) -> void:
@@ -2333,6 +2346,49 @@ func _update_helicopter_audio() -> void:
 		var engine := sin(helicopter_audio_time * TAU * 34.0) * 0.14 + sin(helicopter_audio_time * TAU * 68.0) * 0.05
 		var sample := engine * rotor_chop
 		helicopter_audio_playback.push_frame(Vector2(sample, sample))
+
+func _start_boss_audio() -> void:
+	if DisplayServer.get_name() == "headless" or boss_audio_player == null:
+		return
+	music_player.volume_db = -20.0
+	var stream := AudioStreamGenerator.new()
+	stream.mix_rate = 22050.0
+	stream.buffer_length = 0.5
+	boss_audio_player.stream = stream
+	boss_audio_player.volume_db = -10.0
+	boss_audio_player.play()
+	boss_audio_playback = boss_audio_player.get_stream_playback()
+	boss_audio_time = 0.0
+
+func _stop_boss_audio() -> void:
+	if boss_audio_player != null:
+		boss_audio_player.stop()
+	boss_audio_playback = null
+	if music_player != null and mode == MODE_PLAY:
+		music_player.volume_db = -12.0
+
+func _update_boss_audio() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if not _rapid_boss_active():
+		if boss_audio_playback != null:
+			_stop_boss_audio()
+		return
+	if boss_audio_playback == null:
+		_start_boss_audio()
+		return
+	var notes := [49.0, 49.0, 58.27, 43.65, 49.0, 65.41, 58.27, 43.65]
+	var frames := boss_audio_playback.get_frames_available()
+	for _frame in range(frames):
+		boss_audio_time += 1.0 / 22050.0
+		var step := int(boss_audio_time * 2.0) % notes.size()
+		var frequency: float = notes[step]
+		var beat := pow(maxf(0.0, sin(boss_audio_time * TAU * 2.0)), 6.0)
+		var drone := sin(boss_audio_time * TAU * 24.5) * 0.10
+		var lead := sin(boss_audio_time * TAU * frequency) * (0.13 + beat * 0.08)
+		var harmonic := sin(boss_audio_time * TAU * frequency * 2.0) * 0.035
+		var sample := drone + lead + harmonic
+		boss_audio_playback.push_frame(Vector2(sample, sample))
 
 func _dock_hit_bounds(dock: Dictionary) -> Rect2:
 	# EnemyDock's registration is its top-centre.  Unlike terrain, the original
@@ -2708,6 +2764,14 @@ func _draw() -> void:
 	_draw_aim_cursor()
 
 func _draw_boss_hud() -> void:
+	if boss_intro_ticks > 0:
+		var alpha := minf(1.0, float(boss_intro_ticks) / 24.0)
+		draw_rect(Rect2(72.0, 151.0, 506.0, 92.0), Color(0.10, 0.01, 0.03, alpha * 0.82))
+		draw_rect(Rect2(72.0, 151.0, 506.0, 92.0), Color(0.94, 0.31, 0.35, alpha), false, 2.0)
+		if interface_font != null:
+			draw_string(interface_font, Vector2(254.0, 178.0), "WARNING", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 21, Color(1.0, 0.63, 0.65, alpha))
+			draw_string(interface_font, Vector2(155.0, 205.0), "CENTIPEDE OVERSEER", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 17, Color(1.0, 0.85, 0.86, alpha))
+			draw_string(interface_font, Vector2(170.0, 225.0), "DESTROY DOCKS TO CUT REINFORCEMENTS", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 10, Color(1.0, 0.74, 0.74, alpha))
 	for enemy in enemies:
 		if not bool(enemy.get("boss", false)):
 			continue
@@ -3314,6 +3378,7 @@ func _configure_music_stream(stream: AudioStream) -> void:
 func _stop_music() -> void:
 	current_music_path = ""
 	current_music_pitch = 1.0
+	_stop_boss_audio()
 	if music_player != null:
 		music_player.stop()
 

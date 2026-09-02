@@ -569,7 +569,7 @@ func _run() -> void:
 	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT, game.DIFFICULTY_NORMAL)
 	game.wave = game._target_wave_count()
 	game._spawn_elite_for_wave()
-	_expect(game._rapid_boss_active() and bool(game.enemies[0].get("boss", false)), "The final Rapid Assault wave should spawn the Centipede Overseer instead of an elite captain.")
+	_expect(game._rapid_boss_active() and bool(game.enemies[0].get("boss", false)) and game.boss_intro_ticks == 150, "The final Rapid Assault wave should spawn the Centipede Overseer with its warning-card intro instead of an elite captain.")
 	if not game.enemies.is_empty():
 		var boss: Dictionary = game.enemies[0]
 		boss["health"] = float(boss.get("boss_max_health", 1.0)) * 0.60
