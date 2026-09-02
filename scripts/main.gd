@@ -30,7 +30,7 @@ const REINFORCEMENT_VISIBLE_TICKS := 360
 const RAPID_FLARE_OPTIONS := {
 	"squad": {"title": "TROOP LIFT", "cost": 220, "description": "Giant troop transport: deploy up to 10 fighters."},
 	"medical": {"title": "MEDEVAC", "cost": 125, "description": "Rescue helicopter: delivers 6 field medkits."},
-	"arsenal": {"title": "GUNSHIP RUN", "cost": 260, "description": "AC-130 suppresses docks and fires 3 platform-buster shells."},
+	"arsenal": {"title": "GUNSHIP RUN", "cost": 500, "description": "4 miniguns and 7 platform-buster howitzers."},
 }
 const FLAMER_BURN_MAX_STACKS := 8
 const FLAMER_BURN_DURATION_TICKS := 90
@@ -210,6 +210,8 @@ var big_clouds: Array = []
 var explosions: Array = []
 var reinforcement_calls: Array = []
 var gunship_runs: Array = []
+var gunship_strikes: Array = []
+var gunship_tracers: Array = []
 var cheats_available := false
 var infinite_money_cheat := false
 var instant_build_cheat := false
@@ -497,6 +499,8 @@ func _start_stage(number: int, selected_mode: String = GAME_MODE_FAITHFUL, selec
 	explosions.clear()
 	reinforcement_calls.clear()
 	gunship_runs.clear()
+	gunship_strikes.clear()
+	gunship_tracers.clear()
 	boss_intro_ticks = 0
 	weapon_shake_ticks = 0
 	chaingun_ground_recoil = 0.0
@@ -724,20 +728,20 @@ func _show_build_menu() -> void:
 	paused = true
 	_clear_ui()
 	_add_full_screen_panel(Color(0.02, 0.08, 0.13, 0.94))
-	_add_title("BUILDING MENU", Vector2(112, 30), Vector2(426, 35), 24, Color("#e7f7d2"))
-	_add_label("Choose a blueprint for the selected rubble site. Hold S or Down to construct it.", Vector2(42, 73), Vector2(566, 28), 12, Color("#b8d4be"), HORIZONTAL_ALIGNMENT_CENTER)
-	var first_row_y := 120.0
 	if game_mode == GAME_MODE_RAPID_ASSAULT:
-		_add_title("FLARE STATION", Vector2(112, 30), Vector2(426, 35), 24, Color("#ffd180"))
-		_add_label("Rapid Assault uses field support only — buildings are unavailable.", Vector2(35, 75), Vector2(580, 20), 11, Color("#ffd180"), HORIZONTAL_ALIGNMENT_CENTER)
+		_add_title("FLARE STATION", Vector2(112, 24), Vector2(426, 35), 24, Color("#ffd180"))
+		_add_label("Rapid Assault field support — buildings are unavailable.", Vector2(35, 65), Vector2(580, 20), 11, Color("#ffd180"), HORIZONTAL_ALIGNMENT_CENTER)
 		var option_ids := ["squad", "medical", "arsenal"]
 		for option_index in range(option_ids.size()):
 			var option_id: String = option_ids[option_index]
 			var option: Dictionary = RAPID_FLARE_OPTIONS[option_id]
 			var caption := "%s  $%d\n%s" % [option.get("title", option_id), int(option.get("cost", 0)), option.get("description", "")]
-			_add_button(caption, Vector2(175, 120 + option_index * 66), Vector2(290, 56), _call_reinforcements.bind(building_menu_site_index, option_id), 10)
+			_add_button(caption, Vector2(120, 112 + option_index * 68), Vector2(400, 58), _call_reinforcements.bind(building_menu_site_index, option_id), 10)
 		_add_button("CLOSE", Vector2(235, 408), Vector2(180, 28), _close_building_menu, 13)
 		return
+	_add_title("BUILDING MENU", Vector2(112, 30), Vector2(426, 35), 24, Color("#e7f7d2"))
+	_add_label("Choose a blueprint for the selected rubble site. Hold S or Down to construct it.", Vector2(42, 73), Vector2(566, 28), 12, Color("#b8d4be"), HORIZONTAL_ALIGNMENT_CENTER)
+	var first_row_y := 120.0
 	var ids: Array = GameData.BUILDING_PURCHASE_ORDER
 	for index in range(ids.size()):
 		var building_id: String = ids[index]
@@ -1036,6 +1040,7 @@ func _tick() -> void:
 	_update_lasers()
 	_update_explosions()
 	_update_reinforcement_calls()
+	_update_gunship_effects()
 	_update_gunship_runs()
 	boss_intro_ticks = maxi(0, boss_intro_ticks - 1)
 	_update_boss_audio()
@@ -2402,34 +2407,96 @@ func _update_gunship_runs() -> void:
 		var run: Dictionary = gunship_runs[run_index]
 		run["counter"] = int(run.get("counter", 0)) + 1
 		var counter := int(run.get("counter", 0))
-		# Miniguns constantly pressure active dock platforms and suppress their
-		# spawn timer. This deliberately makes platform destruction strategic.
-		if counter % 8 == 0:
-			var dock_index := _gunship_target_dock_index(run.get("target", Vector2.ZERO))
-			if dock_index >= 0:
-				var dock: Dictionary = docks[dock_index]
-				dock["health"] = float(dock.get("health", 0.0)) - 9.0
-				dock["suppressed_ticks"] = maxi(int(dock.get("suppressed_ticks", 0)), 180)
-				docks[dock_index] = dock
-				_create_smoke(dock.get("pos", Vector2.ZERO) + Vector2(random.randf_range(-20.0, 20.0), -8.0))
-		# Three 105mm shots: platforms first, then the densest available enemy.
-		if counter >= 24 and counter % 36 == 24 and int(run.get("shells_fired", 0)) < 3:
-			var shell_dock_index := _gunship_target_dock_index(run.get("target", Vector2.ZERO))
-			if shell_dock_index >= 0:
-				var platform: Dictionary = docks[shell_dock_index]
-				platform["health"] = float(platform.get("health", 0.0)) - 180.0
-				platform["suppressed_ticks"] = maxi(int(platform.get("suppressed_ticks", 0)), 240)
-				docks[shell_dock_index] = platform
-				_create_bazooka_explosion(platform.get("pos", Vector2.ZERO))
-			elif not enemies.is_empty():
-				var enemy_target: Dictionary = enemies[0]
-				_create_bazooka_explosion(enemy_target.get("pos", run.get("target", Vector2.ZERO)))
+		# Four miniguns actively sweep enemy units, including flyers. They do not
+		# merely damage a dock: every burst chooses four separate live targets.
+		if counter % 5 == 0:
+			_fire_gunship_miniguns(run.get("target", Vector2.ZERO))
+		# Seven telegraphed 105mm shells prefer spawn docks. When all platforms are
+		# gone, the cannon switches to the closest enemy formation.
+		if counter >= 12 and (counter - 12) % 20 == 0 and int(run.get("shells_fired", 0)) < 7:
+			var strike_position := _gunship_strike_target(run.get("target", Vector2.ZERO))
+			gunship_strikes.append({"pos": strike_position, "ticks": 18})
 			run["shells_fired"] = int(run.get("shells_fired", 0)) + 1
-			_play_sound("explosion")
-		if counter >= 125:
+			_play_sound("pickup")
+		if counter >= 180:
 			gunship_runs.remove_at(run_index)
 		else:
 			gunship_runs[run_index] = run
+
+func _fire_gunship_miniguns(target: Vector2) -> void:
+	var targeted: Array[int] = []
+	for gun_index in range(4):
+		var enemy_index := _gunship_target_enemy_index(target, targeted)
+		if enemy_index < 0:
+			break
+		targeted.append(enemy_index)
+		var enemy: Dictionary = enemies[enemy_index]
+		var enemy_position: Vector2 = enemy.get("pos", target)
+		enemy["health"] = float(enemy.get("health", 0.0)) - 28.0
+		enemy["stun_ticks"] = maxi(int(enemy.get("stun_ticks", 0)), 4)
+		enemies[enemy_index] = enemy
+		gunship_tracers.append({"from": enemy_position + Vector2(-random.randf_range(130.0, 240.0), -random.randf_range(120.0, 185.0)), "to": enemy_position, "ticks": 3})
+		if gun_index == 0:
+			_play_sound("squish")
+
+func _gunship_target_enemy_index(target: Vector2, excluded: Array[int] = []) -> int:
+	var best_index := -1
+	var best_distance := INF
+	for enemy_index in range(enemies.size()):
+		if enemy_index in excluded:
+			continue
+		var enemy: Dictionary = enemies[enemy_index]
+		if float(enemy.get("health", 0.0)) <= 0.0:
+			continue
+		var distance: float = enemy.get("pos", target).distance_to(target)
+		if distance < best_distance:
+			best_distance = distance
+			best_index = enemy_index
+	return best_index
+
+func _gunship_strike_target(target: Vector2) -> Vector2:
+	var dock_index := _gunship_target_dock_index(target)
+	if dock_index >= 0:
+		return docks[dock_index].get("pos", target)
+	var enemy_index := _gunship_target_enemy_index(target)
+	return enemies[enemy_index].get("pos", target) if enemy_index >= 0 else target
+
+func _update_gunship_effects() -> void:
+	for index in range(gunship_tracers.size() - 1, -1, -1):
+		var tracer: Dictionary = gunship_tracers[index]
+		tracer["ticks"] = int(tracer.get("ticks", 0)) - 1
+		if int(tracer.get("ticks", 0)) <= 0:
+			gunship_tracers.remove_at(index)
+		else:
+			gunship_tracers[index] = tracer
+	for index in range(gunship_strikes.size() - 1, -1, -1):
+		var strike: Dictionary = gunship_strikes[index]
+		strike["ticks"] = int(strike.get("ticks", 0)) - 1
+		if int(strike.get("ticks", 0)) <= 0:
+			_create_gunship_howitzer_strike(strike.get("pos", Vector2.ZERO))
+			gunship_strikes.remove_at(index)
+		else:
+			gunship_strikes[index] = strike
+
+func _create_gunship_howitzer_strike(position: Vector2) -> void:
+	const STRIKE_RADIUS := 112.0
+	explosions.append({"pos": position, "ticks": 10, "radius": STRIKE_RADIUS})
+	for enemy_index in range(enemies.size()):
+		var enemy: Dictionary = enemies[enemy_index]
+		var distance: float = enemy.get("pos", position).distance_to(position)
+		if distance > STRIKE_RADIUS:
+			continue
+		enemy["health"] = float(enemy.get("health", 0.0)) - lerpf(125.0, 280.0, 1.0 - distance / STRIKE_RADIUS)
+		enemies[enemy_index] = enemy
+	for dock_index in range(docks.size()):
+		var dock: Dictionary = docks[dock_index]
+		if position.distance_to(dock.get("pos", position)) <= _dock_half_width(str(dock.get("id", "blue"))) + 28.0:
+			dock["health"] = float(dock.get("health", 0.0)) - 280.0
+			dock["suppressed_ticks"] = maxi(int(dock.get("suppressed_ticks", 0)), 300)
+			docks[dock_index] = dock
+	for puff in range(8):
+		_create_smoke(position + Vector2(random.randf_range(-28.0, 28.0), random.randf_range(-18.0, 18.0)))
+	_play_sound("explosion")
 
 func _gunship_target_dock_index(target: Vector2) -> int:
 	var best_index := -1
@@ -2940,6 +3007,7 @@ func _draw() -> void:
 	_draw_pickups()
 	_draw_lasers()
 	_draw_bullets()
+	_draw_gunship_effects()
 	_draw_explosions()
 	_draw_friendlies()
 	_draw_enemies()
@@ -3358,6 +3426,18 @@ func _draw_explosions() -> void:
 		var radius := float(explosion.get("radius", BAZOOKA_EXPLOSION_RADIUS)) * (0.3 + progress * 0.7)
 		draw_circle(position, radius, Color(1.0, 0.58, 0.15, (1.0 - progress) * 0.38))
 		draw_circle(position, radius * 0.48, Color(1.0, 0.92, 0.46, (1.0 - progress) * 0.75))
+
+func _draw_gunship_effects() -> void:
+	for tracer in gunship_tracers:
+		var life := float(tracer.get("ticks", 0)) / 3.0
+		draw_line(tracer.get("from", Vector2.ZERO), tracer.get("to", Vector2.ZERO), Color(1.0, 0.81, 0.30, life), 1.4)
+	for strike in gunship_strikes:
+		var position: Vector2 = strike.get("pos", Vector2.ZERO)
+		var progress := 1.0 - float(strike.get("ticks", 0)) / 18.0
+		var radius := 38.0 + sin(progress * TAU * 3.0) * 3.0
+		draw_arc(position, radius, 0.0, TAU, 28, Color(1.0, 0.20, 0.24, 0.95), 2.0)
+		draw_line(position - Vector2(7.0, 0.0), position + Vector2(7.0, 0.0), Color("#ffb0a5"), 1.0)
+		draw_line(position - Vector2(0.0, 7.0), position + Vector2(0.0, 7.0), Color("#ffb0a5"), 1.0)
 
 func _draw_lasers() -> void:
 	for laser in lasers:
