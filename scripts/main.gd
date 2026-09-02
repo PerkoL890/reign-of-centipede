@@ -2961,6 +2961,12 @@ func _draw_reinforcement_calls() -> void:
 		if support_type == "squad":
 			_draw_helicopter_rotor(helicopter_position + Vector2(-245.0, -140.0), counter)
 			_draw_helicopter_rotor(helicopter_position + Vector2(250.0, -110.0), counter + 5)
+		elif support_type == "medical":
+			_draw_aircraft_propeller(helicopter_position + Vector2(169.0, -66.0), counter, 33.0)
+			_draw_aircraft_propeller(helicopter_position + Vector2(261.0, -66.0), counter + 5, 33.0)
+		else:
+			_draw_aircraft_propeller(helicopter_position + Vector2(112.0, -5.0), counter, 31.0)
+			_draw_aircraft_propeller(helicopter_position + Vector2(215.0, -5.0), counter + 5, 31.0)
 
 func _draw_helicopter_rotor(pivot: Vector2, counter: int) -> void:
 	# The body sprite deliberately contains rotor hubs but no blades. Keep the
@@ -2971,6 +2977,15 @@ func _draw_helicopter_rotor(pivot: Vector2, counter: int) -> void:
 	draw_line(Vector2(-205.0, -4.0), Vector2(205.0, -4.0), Color(0.18, 0.14, 0.08, 0.58), 7.0)
 	draw_line(Vector2(-205.0, 5.0), Vector2(205.0, 5.0), Color(0.42, 0.35, 0.19, 0.35), 3.0)
 	draw_circle(Vector2.ZERO, 11.0, Color("#161912"))
+	_set_world_draw_transform()
+
+func _draw_aircraft_propeller(pivot: Vector2, counter: int, radius: float) -> void:
+	# The aircraft bodies contain only nacelles and hubs. Draw the blades here so
+	# they rotate independently without ever doubling a baked-in static prop.
+	_set_world_sprite_transform(pivot, float(counter) * 1.75)
+	draw_line(Vector2(-radius, 0.0), Vector2(radius, 0.0), Color(0.08, 0.09, 0.08, 0.76), 4.0)
+	draw_line(Vector2(0.0, -radius), Vector2(0.0, radius), Color(0.24, 0.25, 0.20, 0.53), 3.0)
+	draw_circle(Vector2.ZERO, 5.0, Color("#151a16"))
 	_set_world_draw_transform()
 
 func _draw_buildings() -> void:
