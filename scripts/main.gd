@@ -735,7 +735,7 @@ func _show_build_menu() -> void:
 			var option_id: String = option_ids[option_index]
 			var option: Dictionary = RAPID_FLARE_OPTIONS[option_id]
 			var caption := "%s  $%d\n%s" % [option.get("title", option_id), int(option.get("cost", 0)), option.get("description", "")]
-			_add_button(caption, Vector2(30 + option_index * 198, 135), Vector2(190, 60), _call_reinforcements.bind(building_menu_site_index, option_id), 9)
+			_add_button(caption, Vector2(175, 120 + option_index * 66), Vector2(290, 56), _call_reinforcements.bind(building_menu_site_index, option_id), 10)
 		_add_button("CLOSE", Vector2(235, 408), Vector2(180, 28), _close_building_menu, 13)
 		return
 	var ids: Array = GameData.BUILDING_PURCHASE_ORDER
