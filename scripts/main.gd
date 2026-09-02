@@ -2534,7 +2534,12 @@ func _create_weapon_pickup(position: Vector2) -> void:
 	if wave >= 10 and random.randf() < 0.10:
 		candidates.append("bazooka")
 	var weapon_id: String = candidates[random.randi_range(0, candidates.size() - 1)]
-	weapon_pickups.append({"pos": position, "weapon_id": weapon_id, "counter": 0})
+	weapon_pickups.append({
+		"pos": position,
+		"vel": Vector2(random.randf_range(-2.5, 2.5), -random.randf_range(3.0, 7.0)),
+		"weapon_id": weapon_id,
+		"counter": 0,
+	})
 
 func _create_box(position: Vector2, floating: bool = false, balloon_id: int = -1) -> void:
 	boxes.append({
@@ -2619,7 +2624,16 @@ func _update_pickups() -> void:
 	for index in range(weapon_pickups.size() - 1, -1, -1):
 		var pickup: Dictionary = weapon_pickups[index]
 		pickup["counter"] = int(pickup.get("counter", 0)) + 1
-		var pickup_position: Vector2 = pickup.get("pos", Vector2.ZERO)
+		var pickup_velocity: Vector2 = pickup.get("vel", Vector2.ZERO)
+		pickup_velocity.y += GameData.PLAYER_GRAVITY
+		pickup_velocity.x *= GameData.PLAYER_FRICTION
+		var pickup_position: Vector2 = pickup.get("pos", Vector2.ZERO) + pickup_velocity
+		var pickup_ground := _ground_y_at(pickup_position.x, pickup_position.y - pickup_velocity.y)
+		if is_finite(pickup_ground) and pickup_position.y >= pickup_ground:
+			pickup_position.y = pickup_ground
+			pickup_velocity = Vector2.ZERO
+		pickup["pos"] = pickup_position
+		pickup["vel"] = pickup_velocity
 		if pickup_position.distance_to(player.get("pos", Vector2.ZERO)) < 22.0:
 			if temporary_weapon_ticks <= 0:
 				field_weapon_return_id = equipped_weapon

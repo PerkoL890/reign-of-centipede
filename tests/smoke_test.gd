@@ -629,6 +629,15 @@ func _run() -> void:
 		game._update_reinforcement_calls()
 	_expect(game.friendlies.size() == 10 and bool(game.reinforcement_calls[0].get("dropped", false)), "The transport should drop a ten-fighter squad at the chosen rubble site.")
 
+	# Field weapons use ordinary pickup gravity and settle on the platform rather
+	# than remaining suspended where their crate was destroyed.
+	game.weapon_pickups.clear()
+	var weapon_drop_position: Vector2 = game.player.get("pos", Vector2.ZERO) + Vector2(60.0, -70.0)
+	game._create_weapon_pickup(weapon_drop_position)
+	for tick in range(60):
+		game._update_pickups()
+	_expect(game.weapon_pickups.size() == 1 and game.weapon_pickups[0].get("vel", Vector2.ONE).length_squared() == 0.0, "Weapon drops should fall and settle on their supporting platform.")
+
 	# Enemy visuals use the original parent wrapper frames at their native scale,
 	# not the old hand-authored 24/42/48px substitute rectangles.
 	_expect_vector_close(game._enemy_render_size("green_centipede"), Vector2(69.0, 161.0), "Green Centipede should retain its original native body dimensions.")
