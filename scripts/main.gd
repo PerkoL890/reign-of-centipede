@@ -26,6 +26,11 @@ const REINFORCEMENT_DROP_COST := 220
 const REINFORCEMENT_HELICOPTER_SIZE := Vector2(860.0, 410.0)
 const REINFORCEMENT_SUSPENSE_TICKS := 300
 const REINFORCEMENT_VISIBLE_TICKS := 360
+const RAPID_FLARE_OPTIONS := {
+	"squad": {"title": "TROOP LIFT", "cost": 220, "description": "Giant troop transport: deploy up to 10 fighters."},
+	"medical": {"title": "MEDEVAC", "cost": 125, "description": "Rescue helicopter: delivers 6 field medkits."},
+	"arsenal": {"title": "ARSENAL LIFT", "cost": 190, "description": "Cargo helicopter: delivers 3 temporary weapon cases."},
+}
 const FLAMER_BURN_MAX_STACKS := 6
 const FLAMER_BURN_DURATION_TICKS := 90
 const WAVE_MODIFIERS := {
@@ -717,8 +722,14 @@ func _show_build_menu() -> void:
 	_add_label("Choose a blueprint for the selected rubble site. Hold S or Down to construct it.", Vector2(42, 73), Vector2(566, 28), 12, Color("#b8d4be"), HORIZONTAL_ALIGNMENT_CENTER)
 	var first_row_y := 120.0
 	if game_mode == GAME_MODE_RAPID_ASSAULT:
-		_add_button("REINFORCEMENT DROP  $%d\nFire a flare; a giant transport drops ten fighters here." % REINFORCEMENT_DROP_COST, Vector2(60, 105), Vector2(520, 48), _call_reinforcements.bind(building_menu_site_index), 12)
-		first_row_y = 165.0
+		_add_label("FLARE STATION — call support before selecting a building blueprint.", Vector2(35, 75), Vector2(580, 20), 11, Color("#ffd180"), HORIZONTAL_ALIGNMENT_CENTER)
+		var option_ids := ["squad", "medical", "arsenal"]
+		for option_index in range(option_ids.size()):
+			var option_id: String = option_ids[option_index]
+			var option: Dictionary = RAPID_FLARE_OPTIONS[option_id]
+			var caption := "%s  $%d\n%s" % [option.get("title", option_id), int(option.get("cost", 0)), option.get("description", "")]
+			_add_button(caption, Vector2(30 + option_index * 198, 100), Vector2(190, 60), _call_reinforcements.bind(building_menu_site_index, option_id), 9)
+		first_row_y = 185.0
 	var ids: Array = GameData.BUILDING_PURCHASE_ORDER
 	for index in range(ids.size()):
 		var building_id: String = ids[index]
@@ -727,23 +738,27 @@ func _show_build_menu() -> void:
 		var column := index % 2
 		var caption := "%s  $%d\n%s" % [data.get("display_name", building_id), int(data.get("cost", 0)), data.get("role", "")]
 		_add_button(caption, Vector2(60 + column * 270, first_row_y + row * 58), Vector2(250, 50), _select_building.bind(building_id), 11)
-	_add_button("CLOSE", Vector2(235, 385), Vector2(180, 31), _close_building_menu, 13)
+	_add_button("CLOSE", Vector2(235, 408), Vector2(180, 28), _close_building_menu, 13)
 
-func _call_reinforcements(site_index: int) -> void:
+func _call_reinforcements(site_index: int, support_type: String = "squad") -> void:
 	if game_mode != GAME_MODE_RAPID_ASSAULT or site_index < 0 or site_index >= buildings.size():
 		return
-	if not infinite_money_cheat and money < REINFORCEMENT_DROP_COST:
-		_set_status("Not enough money for the reinforcement drop.")
+	if not RAPID_FLARE_OPTIONS.has(support_type):
+		return
+	var option: Dictionary = RAPID_FLARE_OPTIONS[support_type]
+	var cost := int(option.get("cost", REINFORCEMENT_DROP_COST))
+	if not infinite_money_cheat and money < cost:
+		_set_status("Not enough money for %s." % option.get("title", "that support drop"))
 		_show_build_menu()
 		return
 	if not infinite_money_cheat:
-		money -= REINFORCEMENT_DROP_COST
+		money -= cost
 	var target: Vector2 = buildings[site_index].get("pos", Vector2.ZERO)
-	reinforcement_calls.append({"target": target, "counter": 0, "dropped": false})
+	reinforcement_calls.append({"target": target, "counter": 0, "dropped": false, "support_type": support_type})
 	building_menu_site_index = -1
 	paused = false
 	_create_float_text("FLARE AWAY", target + Vector2(-18.0, -32.0))
-	_set_status("Reinforcement transport inbound.")
+	_set_status("%s inbound." % option.get("title", "Support transport"))
 	_build_hud()
 
 func _show_building_manage_menu() -> void:
@@ -2293,22 +2308,34 @@ func _update_reinforcement_calls() -> void:
 		var counter := int(call.get("counter", 0))
 		var target: Vector2 = call.get("target", Vector2.ZERO)
 		if counter == REINFORCEMENT_SUSPENSE_TICKS + 90 and not bool(call.get("dropped", false)):
-			var fighter_data: Dictionary = GameData.get_building("medium_shack")
-			var deployed := 0
-			for fighter_index in range(10):
-				if friendlies.size() >= GameData.MAX_FRIENDLIES:
-					break
-				var offset := (float(fighter_index) - 4.5) * 9.0
-				_create_friendly(target + Vector2(offset, -8.0), fighter_data, 0)
-				deployed += 1
+			_deploy_flare_support(target, str(call.get("support_type", "squad")))
 			call["dropped"] = true
-			_create_float_text("SQUAD DEPLOYED %d" % deployed, target + Vector2(-28.0, -42.0))
-			_play_sound("pickup")
 		if counter >= REINFORCEMENT_SUSPENSE_TICKS + REINFORCEMENT_VISIBLE_TICKS:
 			reinforcement_calls.remove_at(index)
 		else:
 			reinforcement_calls[index] = call
 	_update_helicopter_audio()
+
+func _deploy_flare_support(target: Vector2, support_type: String) -> void:
+	if support_type == "medical":
+		for medkit_index in range(6):
+			_create_heart(target + Vector2((float(medkit_index) - 2.5) * 13.0, -25.0 - float(medkit_index % 2) * 12.0))
+		_create_float_text("MEDKITS DEPLOYED", target + Vector2(-33.0, -42.0))
+	elif support_type == "arsenal":
+		for case_index in range(3):
+			_create_weapon_pickup(target + Vector2((float(case_index) - 1.0) * 23.0, -28.0))
+		_create_float_text("WEAPON CASES DEPLOYED", target + Vector2(-48.0, -42.0))
+	else:
+		var fighter_data: Dictionary = GameData.get_building("medium_shack")
+		var deployed := 0
+		for fighter_index in range(10):
+			if friendlies.size() >= GameData.MAX_FRIENDLIES:
+				break
+			var offset := (float(fighter_index) - 4.5) * 9.0
+			_create_friendly(target + Vector2(offset, -8.0), fighter_data, 0)
+			deployed += 1
+		_create_float_text("SQUAD DEPLOYED %d" % deployed, target + Vector2(-28.0, -42.0))
+	_play_sound("pickup")
 
 func _reinforcement_helicopter_position(call: Dictionary) -> Vector2:
 	var target: Vector2 = call.get("target", Vector2.ZERO)
@@ -2910,19 +2937,25 @@ func _draw_pipes() -> void:
 			draw_rect(bounds, Color("#a6f4e1"), false, 1.0)
 
 func _draw_reinforcement_calls() -> void:
-	var helicopter := _load_texture("res://assets/generated/reinforcement_helicopter_body.png")
 	for call in reinforcement_calls:
 		var target: Vector2 = call.get("target", Vector2.ZERO)
 		var counter := int(call.get("counter", 0))
+		var support_type := str(call.get("support_type", "squad"))
 		if counter < REINFORCEMENT_SUSPENSE_TICKS + 90:
 			var flare_top := target + Vector2(0.0, -minf(145.0, float(counter) * 2.1))
 			draw_line(target + Vector2(0.0, -7.0), flare_top, Color("#ff4f54"), 2.0)
 			draw_circle(flare_top, 4.0, Color("#ffd180"))
 		if counter < REINFORCEMENT_SUSPENSE_TICKS:
 			if interface_font != null and counter % 30 < 20:
-				draw_string(interface_font, target + Vector2(-40.0, -158.0), "REINFORCEMENTS INBOUND", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 9, Color("#ffd180"))
+				draw_string(interface_font, target + Vector2(-45.0, -158.0), "%s INBOUND" % RAPID_FLARE_OPTIONS.get(support_type, RAPID_FLARE_OPTIONS["squad"]).get("title", "SUPPORT"), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 9, Color("#ffd180"))
 			continue
 		var helicopter_position := _reinforcement_helicopter_position(call)
+		var helicopter_path := "res://assets/generated/reinforcement_helicopter_body.png"
+		if support_type == "medical":
+			helicopter_path = "res://assets/generated/reinforcement_helicopter_medical.png"
+		elif support_type == "arsenal":
+			helicopter_path = "res://assets/generated/reinforcement_helicopter_arsenal.png"
+		var helicopter := _load_texture(helicopter_path)
 		if helicopter != null:
 			draw_texture_rect(helicopter, Rect2(helicopter_position - REINFORCEMENT_HELICOPTER_SIZE * 0.5, REINFORCEMENT_HELICOPTER_SIZE), false)
 		_draw_helicopter_rotor(helicopter_position + Vector2(-245.0, -140.0), counter)
@@ -2944,6 +2977,11 @@ func _draw_buildings() -> void:
 		var site: Dictionary = buildings[index]
 		var position: Vector2 = site.get("pos", Vector2.ZERO)
 		var state := str(site.get("state", "rubble"))
+		if game_mode == GAME_MODE_RAPID_ASSAULT and state == "rubble":
+			_draw_flare_station(position)
+			if selected_building != "" and player.get("pos", Vector2.ZERO).distance_to(position) < 40.0:
+				draw_arc(position, 26.0, 0.0, TAU, 24, Color("#f3f8c8"), 1.5)
+			continue
 		var art_id := str(site.get("id", "rubble")) if state == "complete" else "rubble"
 		var texture := _load_texture("res://assets/original/buildings/%s.png" % art_id)
 		var rect := Rect2(position - Vector2(31, 48), Vector2(62, 48))
@@ -2962,6 +3000,17 @@ func _draw_buildings() -> void:
 				draw_string(interface_font, position + Vector2(-12.0, -65.0), "LV%d" % (level + 1), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 8, Color("#f4e978"))
 		if selected_building != "" and state == "rubble" and player.get("pos", Vector2.ZERO).distance_to(position) < 40.0:
 			draw_arc(position, 26.0, 0.0, TAU, 24, Color("#f3f8c8"), 1.5)
+
+func _draw_flare_station(position: Vector2) -> void:
+	# Rapid Assault keeps every construction point usable, but visually turns the
+	# empty rubble pile into a small field flare launcher and supply marker.
+	draw_rect(Rect2(position + Vector2(-25.0, -5.0), Vector2(50.0, 7.0)), Color("#48504a"))
+	draw_rect(Rect2(position + Vector2(-22.0, -4.0), Vector2(44.0, 3.0)), Color("#87917a"))
+	draw_rect(Rect2(position + Vector2(-3.0, -31.0), Vector2(6.0, 27.0)), Color("#2b3633"))
+	draw_rect(Rect2(position + Vector2(-1.0, -29.0), Vector2(2.0, 23.0)), Color("#a9b8a0"))
+	draw_circle(position + Vector2(0.0, -35.0), 4.0, Color("#ff554f"))
+	if interface_font != null:
+		draw_string(interface_font, position + Vector2(-25.0, 14.0), "FLARE STATION", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 7, Color("#ffd180"))
 
 func _draw_docks() -> void:
 	for dock in docks:
