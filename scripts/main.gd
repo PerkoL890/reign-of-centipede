@@ -583,10 +583,13 @@ func _build_hud() -> void:
 	_add_hud_value("money", Vector2(219, 10), Vector2(95, 27), 18, HORIZONTAL_ALIGNMENT_RIGHT, hud_number_font)
 	_add_hud_value("wave", Vector2(371, 10), Vector2(44, 27), 18, HORIZONTAL_ALIGNMENT_RIGHT, hud_number_font)
 	_add_hud_value("score", Vector2(432, 10), Vector2(95, 27), 18, HORIZONTAL_ALIGNMENT_RIGHT, hud_number_font)
-	_add_hud_value("workers", Vector2(7, 42), Vector2(190, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
-	_add_hud_value("modifier", Vector2(7, 56), Vector2(230, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
-	_add_hud_value("ability", Vector2(7, 70), Vector2(230, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
-	_add_hud_value("objective", Vector2(7, 84), Vector2(270, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
+	# Keep the recovered Soldiers field for fighters, then give the two specialist
+	# roles their own full labels rather than a modern F/N/C diagnostic string.
+	_add_hud_value("nurses", Vector2(7, 42), Vector2(160, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
+	_add_hud_value("carpenters", Vector2(7, 56), Vector2(180, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
+	_add_hud_value("modifier", Vector2(7, 70), Vector2(230, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
+	_add_hud_value("ability", Vector2(7, 84), Vector2(230, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
+	_add_hud_value("objective", Vector2(7, 98), Vector2(270, 16), 10, HORIZONTAL_ALIGNMENT_LEFT, interface_font)
 	# The original artwork exposes a weapons button at the upper right. Keep the
 	# source click target without replacing it with a modern-looking control.
 	var weapons_button := Button.new()
@@ -3363,21 +3366,23 @@ func _update_hud() -> void:
 		return
 	if hud_labels.has("health"):
 		var health := int(ceil(float(player.get("health", 0.0))))
+		var fighters := 0
+		var nurses := 0
+		var carpenters := 0
+		for friendly in friendlies:
+			match str(friendly.get("role", "fighter")):
+				"nurse": nurses += 1
+				"carpenter": carpenters += 1
+				_: fighters += 1
 		hud_labels["health"].text = "%d/%d" % [health, GameData.PLAYER_MAX_HEALTH]
-		hud_labels["soldiers"].text = "%d/%d" % [friendlies.size(), GameData.MAX_FRIENDLIES]
+		hud_labels["soldiers"].text = "%d/%d" % [fighters, GameData.MAX_FRIENDLIES]
 		hud_labels["money"].text = "$%d" % money
 		hud_labels["wave"].text = str(wave)
 		hud_labels["score"].text = str(score)
-		if hud_labels.has("workers"):
-			var fighters := 0
-			var nurses := 0
-			var carpenters := 0
-			for friendly in friendlies:
-				match str(friendly.get("role", "fighter")):
-					"fighter": fighters += 1
-					"nurse": nurses += 1
-					"carpenter": carpenters += 1
-			hud_labels["workers"].text = "F:%d  N:%d  C:%d" % [fighters, nurses, carpenters]
+		if hud_labels.has("nurses"):
+			hud_labels["nurses"].text = "NURSES: %d" % nurses
+		if hud_labels.has("carpenters"):
+			hud_labels["carpenters"].text = "CRAFTSMEN: %d" % carpenters
 		if hud_labels.has("modifier"):
 			hud_labels["modifier"].text = str(WAVE_MODIFIERS.get(active_wave_modifier, {}).get("title", ""))
 		if hud_labels.has("ability"):
