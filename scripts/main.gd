@@ -2961,12 +2961,6 @@ func _draw_reinforcement_calls() -> void:
 		if support_type == "squad":
 			_draw_helicopter_rotor(helicopter_position + Vector2(-245.0, -140.0), counter)
 			_draw_helicopter_rotor(helicopter_position + Vector2(250.0, -110.0), counter + 5)
-		elif support_type == "medical":
-			_draw_aircraft_propeller(helicopter_position + Vector2(-105.0, -80.0), counter)
-			_draw_aircraft_propeller(helicopter_position + Vector2(105.0, -80.0), counter + 7)
-		else:
-			for engine_index in range(4):
-				_draw_aircraft_propeller(helicopter_position + Vector2(-185.0 + float(engine_index) * 120.0, -72.0), counter + engine_index * 4)
 
 func _draw_helicopter_rotor(pivot: Vector2, counter: int) -> void:
 	# The body sprite deliberately contains rotor hubs but no blades. Keep the
@@ -2977,15 +2971,6 @@ func _draw_helicopter_rotor(pivot: Vector2, counter: int) -> void:
 	draw_line(Vector2(-205.0, -4.0), Vector2(205.0, -4.0), Color(0.18, 0.14, 0.08, 0.58), 7.0)
 	draw_line(Vector2(-205.0, 5.0), Vector2(205.0, 5.0), Color(0.42, 0.35, 0.19, 0.35), 3.0)
 	draw_circle(Vector2.ZERO, 11.0, Color("#161912"))
-	_set_world_draw_transform()
-
-func _draw_aircraft_propeller(pivot: Vector2, counter: int) -> void:
-	# Planes use compact radial propellers rather than the transport's broad
-	# horizontal rotor blur. The generated bodies intentionally omit motion blur.
-	_set_world_sprite_transform(pivot, float(counter) * 1.7)
-	draw_line(Vector2(-18.0, 0.0), Vector2(18.0, 0.0), Color(0.12, 0.12, 0.10, 0.68), 3.0)
-	draw_line(Vector2(0.0, -18.0), Vector2(0.0, 18.0), Color(0.34, 0.32, 0.24, 0.46), 2.0)
-	draw_circle(Vector2.ZERO, 4.0, Color("#1a1e18"))
 	_set_world_draw_transform()
 
 func _draw_buildings() -> void:
