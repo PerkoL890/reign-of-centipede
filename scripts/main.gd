@@ -1260,8 +1260,13 @@ func _try_fire_player(moving: bool) -> void:
 		var direction := aim.rotated(deg_to_rad(random.randf_range(-spread, spread)))
 		_create_bullet(position, direction * 20.0, int(weapon.get("power", 2)), "player")
 	if equipped_weapon == "chaingun":
-		var recoil := 5.2 if not bool(player.get("grounded", false)) else 3.8
-		player["vel"] = player.get("vel", Vector2.ZERO) - aim * recoil
+		# Keep the kick direction circular/angle-independent. Vertical momentum
+		# must be capped, though: unlike horizontal ground motion it otherwise
+		# stacks between two-tick shots and turns downward fire into a jetpack.
+		var recoil := 3.8
+		var recoil_velocity: Vector2 = player.get("vel", Vector2.ZERO) - aim * recoil
+		recoil_velocity.y = maxf(recoil_velocity.y, -4.2)
+		player["vel"] = recoil_velocity
 		chaingun_ground_recoil = -aim.x * 6.5
 		weapon_shake_ticks = 5
 		if aim.y > 0.05:
