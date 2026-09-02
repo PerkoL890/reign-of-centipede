@@ -219,7 +219,7 @@ const WEAPONS: Dictionary = {
 		"display_name": "Chaingun",
 		# Each round hits hard, but Main.gd makes sustained fire wildly inaccurate
 		# and physically difficult to control.
-		"power": 18,
+		"power": 22,
 		"s_rate": 2,
 		"cost": 1100,
 		"amount": 1,

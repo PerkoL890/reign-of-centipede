@@ -22,6 +22,7 @@ const SMOKE_INITIAL_SCALE := 0.30
 const FRIENDLY_WEAPON_SCALE := 0.65
 const BAZOOKA_EXPLOSION_RADIUS := 72.0
 const BAZOOKA_EXPLOSION_DAMAGE := 72.0
+const BAZOOKA_DIRECT_HIT_DAMAGE := 125.0
 const REINFORCEMENT_DROP_COST := 220
 const REINFORCEMENT_HELICOPTER_SIZE := Vector2(860.0, 410.0)
 const REINFORCEMENT_SUSPENSE_TICKS := 300
@@ -31,7 +32,7 @@ const RAPID_FLARE_OPTIONS := {
 	"medical": {"title": "MEDEVAC", "cost": 125, "description": "Rescue helicopter: delivers 6 field medkits."},
 	"arsenal": {"title": "ARSENAL LIFT", "cost": 190, "description": "Cargo helicopter: delivers 3 temporary weapon cases."},
 }
-const FLAMER_BURN_MAX_STACKS := 6
+const FLAMER_BURN_MAX_STACKS := 8
 const FLAMER_BURN_DURATION_TICKS := 90
 const WAVE_MODIFIERS := {
 	"": {"title": "", "health_multiplier": 1.0, "extra_spawns": 0},
@@ -1122,7 +1123,7 @@ func _spawn_rapid_assault_boss() -> void:
 	if enemies.is_empty():
 		return
 	var boss: Dictionary = enemies.back()
-	var boss_health := 2600.0 * float(DIFFICULTY_RULES[difficulty].get("enemy_health_multiplier", 1.0))
+	var boss_health := 3600.0 * float(DIFFICULTY_RULES[difficulty].get("enemy_health_multiplier", 1.0))
 	boss["boss"] = true
 	boss["boss_name"] = "CENTIPEDE OVERSEER"
 	boss["health"] = boss_health
@@ -1615,6 +1616,7 @@ func _create_friendly(position: Vector2, building_data: Dictionary, upgrade_leve
 		"has_target": false,
 		"muzzle_flash_ticks": 0,
 		"heal_flash_ticks": 0,
+		"fall_velocity": 0.0,
 	})
 
 func _update_friendlies() -> void:
@@ -1716,6 +1718,24 @@ func _wander_friendly(friendly: Dictionary) -> void:
 	var position: Vector2 = friendly.get("pos", Vector2.ZERO)
 	var direction := float(friendly.get("move_dir", 1.0))
 	var home_surface: Rect2 = friendly.get("home_surface", Rect2())
+	# A friendly can have been born on a dock/temporary platform. Once it is
+	# destroyed, discard its cached floor rather than holding the friendly at the
+	# old y-coordinate forever.
+	if home_surface.has_area() and not _ground_surface_is_active(home_surface):
+		home_surface = Rect2()
+		friendly["home_surface"] = home_surface
+	if not home_surface.has_area():
+		var fall_velocity := float(friendly.get("fall_velocity", 0.0)) + GameData.PLAYER_GRAVITY
+		var falling_position := position + Vector2(0.0, fall_velocity)
+		var landing_y := _ground_y_at(falling_position.x, position.y, 0.0)
+		if is_finite(landing_y) and falling_position.y >= landing_y:
+			falling_position.y = landing_y
+			fall_velocity = 0.0
+			home_surface = _friendly_home_surface(falling_position)
+			friendly["home_surface"] = home_surface
+		friendly["fall_velocity"] = fall_velocity
+		friendly["pos"] = falling_position
+		return
 	if int(friendly.get("move_counter", 0)) > 30 and random.randf() < 0.004:
 		direction *= -1.0
 		friendly["move_counter"] = 0
@@ -1732,6 +1752,7 @@ func _wander_friendly(friendly: Dictionary) -> void:
 		next_x = position.x
 		next_ground = position.y
 	friendly["move_dir"] = direction
+	friendly["fall_velocity"] = 0.0
 	friendly["pos"] = Vector2(next_x, home_surface.position.y if home_surface.has_area() else next_ground)
 	if not bool(friendly.get("has_target", false)):
 		friendly["facing"] = direction
@@ -1748,6 +1769,12 @@ func _friendly_home_surface(position: Vector2) -> Rect2:
 			best_distance = distance
 			best_surface = surface
 	return best_surface
+
+func _ground_surface_is_active(surface: Rect2) -> bool:
+	for active_surface in _ground_surfaces():
+		if absf(active_surface.position.x - surface.position.x) < 0.1 and absf(active_surface.position.y - surface.position.y) < 0.1 and absf(active_surface.size.x - surface.size.x) < 0.1:
+			return true
+	return false
 
 func _handle_spawns() -> void:
 	if game_mode == GAME_MODE_SANDBOX and not sandbox_enemy_spawns_enabled:
@@ -2225,9 +2252,9 @@ func _bullet_hit(bullet: Dictionary) -> bool:
 	var position: Vector2 = bullet.get("pos", Vector2.ZERO)
 	var weapon_id := str(bullet.get("weapon", ""))
 	if weapon_id == "bazooka":
-		for enemy in enemies:
-			if position.distance_to(enemy.get("pos", Vector2.ZERO)) < 19.0:
-				_create_bazooka_explosion(position)
+		for enemy_index in range(enemies.size()):
+			if position.distance_to(enemies[enemy_index].get("pos", Vector2.ZERO)) < 19.0:
+				_create_bazooka_explosion(position, enemy_index)
 				return true
 		for dock in docks:
 			if _bullet_hits_dock(bullet, dock):
@@ -2272,7 +2299,7 @@ func _bullet_hit(bullet: Dictionary) -> bool:
 			return true
 	return false
 
-func _create_bazooka_explosion(position: Vector2) -> void:
+func _create_bazooka_explosion(position: Vector2, direct_enemy_index: int = -1) -> void:
 	explosions.append({"pos": position, "ticks": 10, "radius": BAZOOKA_EXPLOSION_RADIUS})
 	for index in range(enemies.size()):
 		var enemy: Dictionary = enemies[index]
@@ -2281,7 +2308,10 @@ func _create_bazooka_explosion(position: Vector2) -> void:
 		if distance > BAZOOKA_EXPLOSION_RADIUS:
 			continue
 		var falloff := 1.0 - distance / BAZOOKA_EXPLOSION_RADIUS
-		enemy["health"] = float(enemy.get("health", 0.0)) - BAZOOKA_EXPLOSION_DAMAGE * (0.35 + falloff * 0.65)
+		var explosion_damage := BAZOOKA_EXPLOSION_DAMAGE * (0.35 + falloff * 0.65)
+		if index == direct_enemy_index:
+			explosion_damage = BAZOOKA_DIRECT_HIT_DAMAGE
+		enemy["health"] = float(enemy.get("health", 0.0)) - explosion_damage
 		if distance > 0.1:
 			enemy["pos"] = enemy.get("pos", Vector2.ZERO) + offset.normalized() * (8.0 + falloff * 22.0)
 		enemies[index] = enemy
