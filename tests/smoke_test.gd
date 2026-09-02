@@ -612,6 +612,17 @@ func _run() -> void:
 	game._heal_nearby_friendly(game.friendlies[0])
 	_expect(float(game.friendlies[1].get("health", 0.0)) == 5.0 and int(game.friendlies[1].get("heal_flash_ticks", 0)) > 0, "Nurses should heal nearby injured NPCs and show a heal flash.")
 
+	# Rapid Assault support calls are immediate-value events: a flare summons a
+	# transport and its squad lands at the selected rubble site.
+	game._start_stage(1, game.GAME_MODE_RAPID_ASSAULT, game.DIFFICULTY_NORMAL)
+	game.friendlies.clear()
+	game.money = 500
+	game._call_reinforcements(0)
+	_expect(game.reinforcement_calls.size() == 1 and game.money == 500 - game.REINFORCEMENT_DROP_COST, "A Rapid Assault reinforcement call should spend its fixed cost and create a transport event.")
+	for tick in range(72):
+		game._update_reinforcement_calls()
+	_expect(game.friendlies.size() == 3 and bool(game.reinforcement_calls[0].get("dropped", false)), "The transport should drop a three-fighter squad at the chosen rubble site.")
+
 	# Enemy visuals use the original parent wrapper frames at their native scale,
 	# not the old hand-authored 24/42/48px substitute rectangles.
 	_expect_vector_close(game._enemy_render_size("green_centipede"), Vector2(69.0, 161.0), "Green Centipede should retain its original native body dimensions.")
